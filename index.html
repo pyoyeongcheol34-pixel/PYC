@@ -170,10 +170,10 @@
   .month-stat .l { font-size: 11px; color: var(--text-secondary); margin-bottom: 3px; }
   .month-stat .v { font-size: 15px; font-weight: 600; }
 
-  .detail-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+  .detail-grid { display: grid; grid-template-columns: 0.8fr 1fr 1.4fr; gap: 14px; }
   @media (max-width: 980px) { .detail-grid { grid-template-columns: 1fr; } }
   .detail-col h4 { font-size: 12px; font-weight: 700; color: var(--text-secondary); margin: 0 0 8px; text-transform: none; }
-  .detail-scroll { max-height: 320px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; }
+  .detail-scroll { max-height: 320px; overflow-y: auto; overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
   .detail-scroll table.data-table th { position: sticky; top: 0; background: var(--surface-1); }
   .empty-note { font-size: 12px; color: var(--text-muted); padding: 10px; }
 
@@ -276,8 +276,8 @@
             <div class="detail-scroll"><table class="data-table" id="tradeDetailTable"><thead><tr><th>일자</th><th>종목</th><th>수량</th><th>단가</th><th>금액</th></tr></thead><tbody></tbody></table></div>
           </div>
           <div class="detail-col">
-            <h4>배당 내역</h4>
-            <div class="detail-scroll"><table class="data-table" id="divDetailTable"><thead><tr><th>종목</th><th>배당수익(USD)</th></tr></thead><tbody></tbody></table></div>
+            <h4>종목별 실현손익 · 배당</h4>
+            <div class="detail-scroll"><table class="data-table" id="realizedDetailTable"><thead><tr><th>종목</th><th>실현손익(USD)</th><th>원화반영손익(KRW)</th><th>실현수익률</th><th>배당수익(USD)</th></tr></thead><tbody></tbody></table></div>
           </div>
         </div>
       </div>
@@ -737,6 +737,12 @@ if (typeof module !== 'undefined' && module.exports) {
   const fmtNum = (v) => v == null ? '-' : Number(v).toLocaleString('en-US');
   const cls = (v) => v == null ? '' : (v >= 0 ? 'delta-good' : 'delta-bad');
   const pillCls = (v) => v == null ? '' : (v >= 0 ? 'pill-good' : 'pill-bad');
+  // Profit/loss cells are colored red(이익)/blue(손실) via cls()/pillCls(), so
+  // the +/- sign is redundant there -- these show the magnitude only.
+  const fmtUSDAbs = (v, opts) => v == null ? '-' : fmtUSD(Math.abs(Number(v)), opts);
+  const fmtUSD0Abs = (v) => v == null ? '-' : fmtUSD0(Math.abs(Number(v)));
+  const fmtKRWAbs = (v) => v == null ? '-' : fmtKRW(Math.abs(Number(v)));
+  const fmtPctAbs = (v) => v == null ? '-' : fmtPct(Math.abs(Number(v)));
 
   function cssVar(name) {
     return getComputedStyle(document.getElementById('root')).getPropertyValue(name).trim();
@@ -822,7 +828,7 @@ if (typeof module !== 'undefined' && module.exports) {
     { label: '매입금액', value: fmtUSD0(snap.buy_amount) },
     { label: '평가금액', value: fmtUSD0(snap.eval_amount) },
     { label: '예수금', value: fmtUSD0(snap.cash) },
-    { label: '수익률', value: fmtPct(snap.return_pct), deltaClass: cls(snap.return_pct) },
+    { label: '수익률', value: fmtPctAbs(snap.return_pct), deltaClass: cls(snap.return_pct) },
   ];
   statRow.innerHTML = statDefs.map(s => `
     <div class="stat-tile">
@@ -932,13 +938,13 @@ if (typeof module !== 'undefined' && module.exports) {
       const date = dataIndex != null ? eqReturn[dataIndex].date : '';
       const retVal = dataIndex != null ? vals[dataIndex] : null;
       let html = `<div class="ctt-title">${date}</div>`;
-      html += `<div class="ctt-row"><span>계좌 수익률</span><span style="color:${upDownColor(retVal)}; font-weight:700;">${retVal == null ? '-' : (retVal >= 0 ? '+' : '') + retVal.toFixed(2) + '%'}</span></div>`;
+      html += `<div class="ctt-row"><span>계좌 수익률</span><span style="color:${upDownColor(retVal)}; font-weight:700;">${retVal == null ? '-' : Math.abs(retVal).toFixed(2) + '%'}</span></div>`;
       const dayHoldings = tickerHistoryMap[date];
       if (dayHoldings && dayHoldings.length) {
         html += `<div class="ctt-sep"></div><div class="ctt-sub">보유 종목 평가손익 · 수익률</div>`;
         dayHoldings.forEach(h => {
           const c = upDownColor(h.pnl);
-          html += `<div class="ctt-row"><span style="color:${c};">${h.ticker}</span><span style="color:${c};">${h.pnl == null ? '-' : (h.pnl >= 0 ? '+' : '') + fmtUSD0(h.pnl)} (${h.return_pct == null ? '-' : (h.return_pct >= 0 ? '+' : '') + (h.return_pct*100).toFixed(2) + '%'})</span></div>`;
+          html += `<div class="ctt-row"><span style="color:${c};">${h.ticker}</span><span style="color:${c};">${fmtUSD0Abs(h.pnl)} (${h.return_pct == null ? '-' : Math.abs(h.return_pct*100).toFixed(2) + '%'})</span></div>`;
         });
       } else {
         html += `<div class="ctt-sep"></div><div class="ctt-sub" style="font-style:italic;">이 날짜의 종목별 기록이 없습니다 (시트에 기록용 스크립트를 설정한 이후부터 매일 자동 기록됩니다)</div>`;
@@ -976,15 +982,15 @@ if (typeof module !== 'undefined' && module.exports) {
       <td>${fmtUSD(h.current_price)}</td>
       <td>${fmtUSD0(h.buy_amount)}</td>
       <td>${fmtUSD0(h.evalAmt)}</td>
-      <td class="${cls(h.pnl)}">${h.pnl >= 0 ? '+' : ''}${fmtUSD0(h.pnl)}</td>
-      <td><span class="pill ${pillCls(h.return_pct)}">${fmtPct(h.return_pct)}</span></td>
+      <td class="${cls(h.pnl)}">${fmtUSD0Abs(h.pnl)}</td>
+      <td><span class="pill ${pillCls(h.return_pct)}">${fmtPctAbs(h.return_pct)}</span></td>
     </tr>`).join('') + `
     <tr class="total-row">
       <td>합계</td><td></td><td></td><td></td>
       <td>${fmtUSD0(sumBuy)}</td>
       <td>${fmtUSD0(sumEval)}</td>
-      <td class="${cls(sumEval - sumBuy)}">${(sumEval - sumBuy) >= 0 ? '+' : ''}${fmtUSD0(sumEval - sumBuy)}</td>
-      <td><span class="pill ${pillCls(sumEval - sumBuy)}">${sumBuy ? fmtPct((sumEval - sumBuy) / sumBuy) : '-'}</span></td>
+      <td class="${cls(sumEval - sumBuy)}">${fmtUSD0Abs(sumEval - sumBuy)}</td>
+      <td><span class="pill ${pillCls(sumEval - sumBuy)}">${sumBuy ? fmtPctAbs((sumEval - sumBuy) / sumBuy) : '-'}</span></td>
     </tr>`;
 
   // ---------- Section 1: monthly table ----------
@@ -996,9 +1002,9 @@ if (typeof module !== 'undefined' && module.exports) {
       <td>${fmtKRW(m.deposit_krw)}</td>
       <td>${fmtKRW(m.withdraw_krw)}</td>
       <td>${fmtKRW(m.exchange_krw)}</td>
-      <td class="${cls(m.trade_profit)}">${fmtUSD(m.trade_profit)}</td>
-      <td class="${cls(m.dividend)}">${fmtUSD(m.dividend)}</td>
-      <td class="${cls(m.total_profit)}">${fmtUSD(m.total_profit)}</td>
+      <td class="${cls(m.trade_profit)}">${fmtUSDAbs(m.trade_profit)}</td>
+      <td class="${cls(m.dividend)}">${fmtUSDAbs(m.dividend)}</td>
+      <td class="${cls(m.total_profit)}">${fmtUSDAbs(m.total_profit)}</td>
     </tr>`).join('');
 
   function buildDepositChart() {
@@ -1077,9 +1083,9 @@ if (typeof module !== 'undefined' && module.exports) {
       <div class="month-stat"><div class="l">입금</div><div class="v">${fmtKRW(mInfo.deposit_krw)}</div></div>
       <div class="month-stat"><div class="l">출금</div><div class="v">${fmtKRW(mInfo.withdraw_krw)}</div></div>
       <div class="month-stat"><div class="l">환전</div><div class="v">${fmtKRW(mInfo.exchange_krw)}</div></div>
-      <div class="month-stat"><div class="l">매매손익</div><div class="v ${cls(mInfo.trade_profit)}">${fmtUSD(mInfo.trade_profit)}</div></div>
-      <div class="month-stat"><div class="l">배당수익</div><div class="v ${cls(mInfo.dividend)}">${fmtUSD(mInfo.dividend)}</div></div>
-      <div class="month-stat"><div class="l">총수익</div><div class="v ${cls(mInfo.total_profit)}">${fmtUSD(mInfo.total_profit)}</div></div>
+      <div class="month-stat"><div class="l">매매손익</div><div class="v ${cls(mInfo.trade_profit)}">${fmtUSDAbs(mInfo.trade_profit)}</div></div>
+      <div class="month-stat"><div class="l">배당수익</div><div class="v ${cls(mInfo.dividend)}">${fmtUSDAbs(mInfo.dividend)}</div></div>
+      <div class="month-stat"><div class="l">총수익</div><div class="v ${cls(mInfo.total_profit)}">${fmtUSDAbs(mInfo.total_profit)}</div></div>
     `;
 
     const cf = cashflow.filter(c => c.date.slice(5,7) === mKey);
@@ -1097,11 +1103,20 @@ if (typeof module !== 'undefined' && module.exports) {
       <td>${fmtUSD(t.avg_price)}</td><td>${fmtUSD(t.amount)}</td></tr>`).join('')
       : `<tr><td colspan="5" class="empty-note">내역 없음</td></tr>`;
 
-    const divs = (monthTicker[month] || []).filter(d => d.dividend != null && d.dividend !== 0);
-    const divTbody = document.querySelector('#divDetailTable tbody');
-    divTbody.innerHTML = divs.length ? divs.map(d => `
-      <tr><td>${d.ticker}</td><td class="delta-good">${fmtUSD(d.dividend)}</td></tr>`).join('')
-      : `<tr><td colspan="2" class="empty-note">배당 내역 없음</td></tr>`;
+    const realizedRows = (monthTicker[month] || []).filter(d =>
+      (d.realized_pl != null && d.realized_pl !== 0) ||
+      (d.krw_pl != null && d.krw_pl !== 0) ||
+      (d.dividend != null && d.dividend !== 0));
+    const realizedTbody = document.querySelector('#realizedDetailTable tbody');
+    realizedTbody.innerHTML = realizedRows.length ? realizedRows.map(d => `
+      <tr>
+        <td>${d.ticker}</td>
+        <td class="${cls(d.realized_pl)}">${fmtUSDAbs(d.realized_pl)}</td>
+        <td class="${cls(d.krw_pl)}">${fmtKRWAbs(d.krw_pl)}</td>
+        <td class="${cls(d.realized_return_pct)}">${fmtPctAbs(d.realized_return_pct)}</td>
+        <td class="delta-good">${d.dividend ? fmtUSDAbs(d.dividend) : '-'}</td>
+      </tr>`).join('')
+      : `<tr><td colspan="5" class="empty-note">실현손익·배당 내역 없음</td></tr>`;
   }
 
   monthTabs.addEventListener('click', (e) => {
