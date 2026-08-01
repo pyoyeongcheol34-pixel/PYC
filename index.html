@@ -6,7 +6,7 @@
 <title>내 미국주식 계좌 대시보드</title>
 <!-- PWA / "홈 화면에 추가" support -->
 <link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#0b0b0b">
+<meta name="theme-color" content="#f9f9f7">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -29,7 +29,12 @@
 //# sourceMappingURL=chart.umd.js.map
 </script>
 <style>
-  .viz-root {
+  /* Variables (and color-scheme) live on :root/<html>, not just the .viz-root
+     div -- that way html/body (which sit OUTSIDE .viz-root) also pick up the
+     correct theme colors instead of falling back to the browser's default
+     transparent background + black text, which is what caused stray
+     unstyled/illegible strips (e.g. mobile overscroll bounce) in dark mode. */
+  :root {
     color-scheme: light;
     --surface-1:      #fcfcfb;
     --page:           #f9f9f7;
@@ -48,37 +53,20 @@
     --good-fill:      #c92a2a;
     --critical:       #2f6fb0; /* 파랑 = 하락/손실 */
   }
-  @media (prefers-color-scheme: dark) {
-    :root:where(:not([data-theme="light"])) .viz-root {
-      color-scheme: dark;
-      --surface-1:      #1a1a19;
-      --page:           #0d0d0d;
-      --text-primary:   #ffffff;
-      --text-secondary: #c3c2b7;
-      --text-muted:     #898781;
-      --grid:           #2c2c2a;
-      --axis:           #383835;
-      --border:         rgba(255,255,255,0.10);
-      --series-1:       #3987e5;
-      --series-2:       #d95926;
-      --series-3:       #199e70;
-      --series-4:       #c98500;
-      --series-5:       #9085e9;
-      --good:           #e8615f; /* 빨강 = 상승/이익 */
-      --good-fill:      #e8615f;
-      --critical:       #5b9bdb; /* 파랑 = 하락/손실 */
-    }
-  }
-  :root[data-theme="dark"] .viz-root {
+  /* Dark mode only ever applies when the user explicitly clicks the theme
+     toggle (which sets data-theme="dark" on <html>) -- the dashboard always
+     opens in light mode by default, regardless of the OS/browser's system
+     color-scheme preference. */
+  :root[data-theme="dark"] {
     color-scheme: dark;
     --surface-1:      #1a1a19;
     --page:           #0d0d0d;
     --text-primary:   #ffffff;
-    --text-secondary: #c3c2b7;
-    --text-muted:     #898781;
+    --text-secondary: #d7d6d1;
+    --text-muted:     #a3a19a;
     --grid:           #2c2c2a;
-    --axis:           #383835;
-    --border:         rgba(255,255,255,0.10);
+    --axis:           #45443f;
+    --border:         rgba(255,255,255,0.14);
     --series-1:       #3987e5;
     --series-2:       #d95926;
     --series-3:       #199e70;
@@ -120,6 +108,7 @@
 
   .stat-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
   @media (max-width: 900px) { .stat-row { grid-template-columns: repeat(2, 1fr); } }
+  .stat-row-6 { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; }
   .stat-tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
   .stat-label { font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; }
   .stat-value { font-size: 22px; font-weight: 600; line-height: 1.2; }
@@ -164,8 +153,7 @@
   .month-tab.active { background: var(--series-1); color: #ffffff; border-color: var(--series-1); }
   .month-tab[disabled] { opacity: 0.35; cursor: not-allowed; }
 
-  .month-stat-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-bottom: 16px; }
-  @media (max-width: 900px) { .month-stat-row { grid-template-columns: repeat(3, 1fr); } }
+  .month-stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; margin-bottom: 16px; }
   .month-stat { background: var(--page); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
   .month-stat .l { font-size: 11px; color: var(--text-secondary); margin-bottom: 3px; }
   .month-stat .v { font-size: 15px; font-weight: 600; }
@@ -178,6 +166,15 @@
   .empty-note { font-size: 12px; color: var(--text-muted); padding: 10px; }
 
   footer.note { margin-top: 40px; font-size: 12px; color: var(--text-muted); line-height: 1.7; border-top: 1px solid var(--border); padding-top: 14px; }
+
+  .diag-panel { margin-top: 10px; font-size: 12px; }
+  .diag-month { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
+  .diag-month .diag-head { font-weight: 700; margin-bottom: 4px; }
+  .diag-month table { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 11px; }
+  .diag-month th, .diag-month td { padding: 3px 6px; text-align: left; border-bottom: 1px solid var(--grid); font-variant-numeric: tabular-nums; }
+  .diag-ok { color: var(--text-secondary); }
+  .diag-fail { color: var(--critical); font-weight: 700; }
+  .diag-summary { color: var(--text-secondary); margin-bottom: 12px; }
 </style>
 </head>
 <body>
@@ -187,6 +184,10 @@
       <div>
         <h1>📊 표영철님의 미국주식 계좌 대시보드</h1>
         <div class="meta-line">데이터 기준일: <b id="asOfDate">-</b> · 현재 환율: <b id="fxRate">-</b> · 불러온 시각: <b id="generatedAt">-</b></div>
+        <div class="month-tabs" id="accountTabs" style="margin-top:10px; margin-bottom:0;">
+          <button class="month-tab active" data-account="표" type="button">표</button>
+          <button class="month-tab" data-account="양" type="button">양</button>
+        </div>
       </div>
       <div style="display:flex; gap:8px;">
         <button class="theme-toggle" id="refreshBtn">↻ 새로고침</button>
@@ -219,46 +220,42 @@
 
     <section class="block" id="section3">
       <p class="block-title">자산 · 수익률 추이</p>
-      <p class="block-sub">일별 스냅샷 기준입니다.</p>
+      <p class="block-sub">일별 스냅샷 기준입니다. 아래에서 월을 선택하면 시간이 지나도 그 달의 차트를 다시 볼 수 있습니다.</p>
+      <div class="month-tabs" id="trendMonthTabs"></div>
       <div class="chart-grid" style="grid-template-columns: 1fr;">
         <div class="chart-card">
-          <h3>자산 추이 (총자산 · 평가금액 · 매입금액 · 예수금, USD)</h3>
+          <h3 id="assetChartTitle">자산 추이 (총자산 · 평가금액 · 매입금액 · 예수금, USD)</h3>
           <canvas id="assetChart" height="220"></canvas>
+          <p class="empty-note" id="assetChartEmpty" style="display:none; text-align:center; padding:24px 0 0;">이 달의 일별 기록이 없습니다.</p>
         </div>
       </div>
       <div class="chart-grid" style="grid-template-columns: 1fr; margin-top:14px;">
         <div class="chart-card">
-          <h3>수익률 추이 (%) · 최근 31일</h3>
+          <h3 id="returnChartTitle">수익률 추이 (%)</h3>
           <canvas id="returnChart" height="140"></canvas>
+          <p class="empty-note" id="returnChartEmpty" style="display:none; text-align:center; padding:24px 0 0;">이 달의 일별 기록이 없습니다.</p>
         </div>
       </div>
     </section>
 
     <section class="block" id="section1">
       <p class="block-title">월별 입출금 · 환전 · 매매 · 배당 내역</p>
-      <p class="block-sub">'2026 표' 시트의 월별 집계와 원본 거래 로그를 함께 보여줍니다.</p>
+      <p class="block-sub" id="section1Sub">시트의 월별 집계와 원본 거래 로그를 함께 보여줍니다.</p>
+
+      <p class="block-title" id="annualTitle" style="font-size:14px; margin-top:2px;">연간 종합 실적</p>
+      <div class="stat-row-6" id="annualStatRow" style="margin-bottom:18px;"></div>
+
       <div class="card">
         <div style="overflow-x:auto;">
           <table class="data-table" id="monthlyTable">
             <thead>
               <tr>
                 <th>월</th><th>입금(KRW)</th><th>출금(KRW)</th><th>환전(KRW→USD)</th>
-                <th>매매손익(USD)</th><th>배당수익(USD)</th><th>총수익(USD)</th>
+                <th>매매손익(USD)</th><th>원화반영손익(KRW)</th><th>배당수익(USD)</th><th>총수익(USD)</th>
               </tr>
             </thead>
             <tbody id="monthlyBody"></tbody>
           </table>
-        </div>
-      </div>
-
-      <div class="chart-grid" style="grid-template-columns: 1fr 1fr; margin-top:14px;">
-        <div class="chart-card">
-          <h3>월별 입출금 (KRW)</h3>
-          <canvas id="depositChart" height="200"></canvas>
-        </div>
-        <div class="chart-card">
-          <h3>월별 매매손익 · 배당수익 (USD)</h3>
-          <canvas id="profitChart" height="200"></canvas>
         </div>
       </div>
 
@@ -288,31 +285,90 @@
       Claude나 Cowork 세션 없이도 이 HTML 파일만 저장해두면(예: 즐겨찾기·북마크) 브라우저에서 바로 열어 볼 수 있습니다. 다만 이 파일을 여는 기기가 인터넷에 연결되어 있어야 하며, 시트의 "링크가 있는 모든 사용자에게 공개" 열람 권한이 꺼지면 데이터를 불러올 수 없습니다.
       금액은 시트에 기록된 값을 그대로 사용했으며(달러 기준), 평가손익 및 수익률은 표기된 현재가·매입가를 기준으로 계산되었습니다. 투자 참고용 개인 기록이며 투자 조언이 아닙니다.
     </footer>
+
+    <div style="margin-top:8px;">
+      <button class="theme-toggle" id="diagToggle" type="button">🔧 데이터 진단 정보 보기</button>
+      <div id="diagPanel" class="diag-panel" style="display:none;"></div>
+    </div>
     </div>
   </div>
 </div>
 
 <script>// ---------------------------------------------------------------------------
 // Live Google Sheets extraction for the stock dashboard.
-// Loads the '표' spreadsheet's data for each relevant tab via Google's gviz
-// query endpoint, using a JSONP <script> tag (NOT fetch/XHR) so this works
-// from any origin -- including a plain file:// page opened straight from
-// disk, where fetch() to a cross-origin URL is blocked by the browser
-// regardless of the target's CORS headers.
+// Loads the selected account's spreadsheet data for each relevant tab via
+// Google's gviz query endpoint, using a JSONP <script> tag (NOT fetch/XHR)
+// so this works from any origin -- including a plain file:// page opened
+// straight from disk, where fetch() to a cross-origin URL is blocked by the
+// browser regardless of the target's CORS headers.
 // ---------------------------------------------------------------------------
 
-const SHEET_ID = '17567emgJnMoQsrn0FQlbec37iXmrH7iAttv1n1R4_xc';
-const SHEET_YEAR = 2026; // the '2026 표' tab is year-specific; bump this (and
-                          // the SUMMARY_SHEET name below) once a new year's
-                          // tab exists in the source spreadsheet.
-const SUMMARY_SHEET = '2026 표';
-const TRADE_LOG_SHEET = '매매 일지';
-const CASHFLOW_SHEET = '입출금 및 환전';
-// Populated by an Apps Script bound to the spreadsheet (see setup guide) that
-// runs on open and appends that day's per-ticker 평가손익/수익률. Optional --
-// if this tab doesn't exist yet (script not installed), the dashboard simply
-// shows no per-ticker breakdown in the return-chart tooltip.
-const HISTORY_SHEET = '종목별 일별 기록';
+// Two accounts can be viewed from the same dashboard, each backed by its own
+// spreadsheet document. '양' was copied from '표' as a starting point, so
+// most tab names/columns line up, but not all: its 매매 일지/입출금 tabs and
+// month tabs carry a "(양뿡)" suffix, its yearly summary tab is named
+// "2026 양" (not "2026 표"), it doesn't have a '1월' tab, and it doesn't yet
+// have a '종목별 일별 기록' tab at all. Add a new entry here for any future
+// account; buildDashboardData(accountKey) takes care of the rest.
+const ACCOUNTS = {
+  표: {
+    label: '표',
+    sheetId: '17567emgJnMoQsrn0FQlbec37iXmrH7iAttv1n1R4_xc',
+    sheetYear: 2026, // the summary tab is year-specific; bump this (and
+                      // summarySheet below) once a new year's tab exists.
+    summarySheet: '2026 표',
+    tradeLogSheet: '매매 일지',
+    cashflowSheet: '입출금 및 환전',
+    // Populated by an Apps Script bound to the spreadsheet (see setup guide)
+    // that runs on open and appends that day's per-ticker 평가손익/수익률.
+    // Optional -- if this tab doesn't exist (script not installed), the
+    // dashboard simply shows no per-ticker breakdown in the tooltip.
+    historySheet: '종목별 일별 기록',
+    monthSheetSuffix: '',
+    // Confirmed directly against the live '2026 표' sheet's header row:
+    // H=매매 수익, I=배당 수익, J=총 수익(매매+배당), K=매입 금액,
+    // L=평가 금액, M=예수금, N=총 자산. Hardcoded (0-indexed, A=0) instead
+    // of left to the header-text auto-search below, since that search
+    // depends on Google's gviz endpoint reporting the header row exactly as
+    // expected, which turned out not to be reliable enough to trust blind.
+    summaryCols: { tradeProfitCol: 7, dividendCol: 8, totalProfitCol: 9, buyAmountCol: 10, evalAmountCol: 11, cashCol: 12, totalAssetsCol: 13 },
+    // Each month tab's (7월, 8월, ...) per-ticker realized/dividend block
+    // starts at column A (종목명). Hardcoded for the same reason as
+    // summaryCols above -- searching for it via header text turned out not
+    // to be reliable against what Google's gviz endpoint actually returns.
+    monthTickerCol: 0,
+  },
+  양: {
+    label: '양',
+    sheetId: '1JgREt6_3l6VCbPSK-bynm6J1pLYkE2E34vyHwVk2_hM',
+    sheetYear: 2026,
+    summarySheet: '2026 양',
+    tradeLogSheet: '매매 일지(양뿡)',
+    cashflowSheet: '입출금 및 환전(양뿡)',
+    historySheet: '종목별 일별 기록(양뿡)',
+    monthSheetSuffix: '(양뿡)',
+    // Confirmed directly against the live '2026 양' sheet's header row:
+    // H=매매 수익(해외), I=매매 수익(국장, 사용 안 함), J=배당 수익,
+    // K=총 수익(매매+배당), L=매입 금액, M=평가 금액, N=예수금, O=총 자산.
+    // '양' has this one extra "국장" column '표' doesn't, shifting J
+    // onward by one -- that's exactly what kept going wrong when this was
+    // auto-detected from the header row instead of hardcoded here.
+    summaryCols: { tradeProfitCol: 7, dividendCol: 9, totalProfitCol: 10, buyAmountCol: 11, evalAmountCol: 12, cashCol: 13, totalAssetsCol: 14 },
+    // Each month tab's per-ticker realized/dividend block starts at column
+    // G (an extra domestic-stock block occupies A-E to its left) --
+    // confirmed directly against the live '7월(양뿡)' sheet.
+    monthTickerCol: 6,
+  },
+};
+const DEFAULT_ACCOUNT = '표';
+
+// Mutable "current account" state -- set at the start of buildDashboardData()
+// and read by the parse helpers below (parseMD needs the right year; the
+// fetch helpers need the right spreadsheet id). Simpler than threading an
+// extra parameter through every call in the parse chain, and safe because
+// fetchAllSequential/buildDashboardData never run two accounts concurrently.
+let SHEET_ID = ACCOUNTS[DEFAULT_ACCOUNT].sheetId;
+let SHEET_YEAR = ACCOUNTS[DEFAULT_ACCOUNT].sheetYear;
 
 // Ensures the google.visualization.Query namespace exists so we can hook
 // its (standard, undocumented-custom-name-free) setResponse callback.
@@ -335,7 +391,16 @@ function fetchSheetRows(sheetName, timeoutMs) {
   timeoutMs = timeoutMs || 20000;
   return new Promise((resolve, reject) => {
     ensureGvizNamespace();
-    const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}`;
+    // headers=0 tells gviz to treat every row as plain data and never
+    // auto-detect/strip a "header row" out of table.rows into table.cols[]
+    // .label instead. Without this, gviz guesses the header-row count per
+    // sheet based on its own heuristics (cell formatting/typing), and that
+    // guess can differ sheet to sheet -- silently shifting which row our
+    // "row directly above the first data row" header-text search (used for
+    // locating columns like 배당 수익/총 수익 by name) actually lands on,
+    // even though every local test (built from hand-constructed table.rows)
+    // never reproduces this since those never go through gviz's guesser.
+    const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}&headers=0`;
     let done = false;
     const script = document.createElement('script');
     const prevHandler = window.google.visualization.Query.setResponse;
@@ -385,7 +450,7 @@ async function fetchAllSequential(sheetNames, optional) {
 
 function gvizTableToRows(table) {
   if (!table || !table.rows) return [];
-  return table.rows.map(row => {
+  const rows = table.rows.map(row => {
     if (!row || !row.c) return [];
     return row.c.map(c => {
       if (!c) return '';
@@ -394,6 +459,19 @@ function gvizTableToRows(table) {
       return '';
     });
   });
+  // Defense in depth alongside the headers=0 request param: if gviz still
+  // auto-detects a header row for some sheet and reports its text only via
+  // table.cols[].label (pulling it OUT of table.rows entirely) rather than
+  // as a normal row, prepend a synthetic row built from those labels so any
+  // header-text search still sees it. When gviz reports no such labels
+  // (the normal case once headers=0 is honored), every cols[i].label is
+  // empty/generic and this row is harmless -- it won't match any of this
+  // app's header-text searches and doesn't shift any other logic, since
+  // nothing here indexes rows by a fixed position.
+  if (table.cols && table.cols.some(c => c && c.label)) {
+    rows.unshift(table.cols.map(c => (c && c.label) || ''));
+  }
+  return rows;
 }
 
 // Some month tabs (9월..12월 etc.) may not exist yet -- treat any failure to
@@ -421,18 +499,59 @@ function num(v) {
   const cleaned = s.replace(/,/g, '').replace(/\$/g, '').replace(/₩/g, '')
     .replace(/%/g, '').replace(/USD/g, '').replace(/KRW/g, '').trim();
   if (cleaned === '' || cleaned === '-') return null;
+  // Require the WHOLE cleaned string to be numeric. parseFloat() silently
+  // parses only a leading numeric prefix and ignores trailing garbage
+  // (parseFloat("1월") === 1, parseFloat("12월") === 12) -- if a column
+  // resolver ever mis-locates a column and this ends up reading a text
+  // cell like a month label instead of a currency amount, that behavior
+  // quietly turns a wrong-column bug into a plausible-looking WRONG DOLLAR
+  // FIGURE instead of an honest "couldn't parse this" gap. This exact
+  // failure mode is what produced monthly 매매손익/배당수익 values that
+  // matched their row's month number (1 for 1월, 12 for 12월, ...).
+  // Rejecting anything with leftover non-numeric characters instead makes
+  // that failure mode surface as missing data (a dash), which is far less
+  // misleading and impossible to mistake for a real number.
+  if (!/^-?\d+(\.\d+)?$/.test(cleaned)) return null;
   const f = parseFloat(cleaned);
-  if (Number.isNaN(f)) return null;
   return isPct ? f / 100 : f;
 }
 
+function mkDate(year, month, day) {
+  const mn = Number(month), dy = Number(day);
+  if (!(mn >= 1 && mn <= 12) || !(dy >= 1 && dy <= 31)) return null;
+  return `${year}-${String(mn).padStart(2, '0')}-${String(dy).padStart(2, '0')}`;
+}
+
+// Parses a date cell's displayed text into 'YYYY-MM-DD'. The sheets were
+// built assuming plain "M/D" cells (e.g. "8/1"), but a newly typed date in a
+// fresh column can silently pick up a different display format depending on
+// the spreadsheet locale/column formatting (e.g. "2026. 8. 1", "2026-08-01",
+// "8/1/2026", "8월 1일") -- if that format isn't recognized here, the whole
+// day's entry is dropped (see callers), which looks like "the chart didn't
+// update" even though the data was entered correctly. Accepting the common
+// variants avoids that trap.
 function parseMD(s) {
   if (!s) return null;
-  const m = String(s).trim().match(/^(\d{1,2})\/(\d{1,2})$/);
-  if (!m) return null;
-  const mm = String(m[1]).padStart(2, '0');
-  const dd = String(m[2]).padStart(2, '0');
-  return `${SHEET_YEAR}-${mm}-${dd}`;
+  const str = String(s).trim();
+
+  // "M/D" or "M-D" (no year) -- the original/expected format
+  let m = str.match(/^(\d{1,2})[\/\-](\d{1,2})$/);
+  if (m) return mkDate(SHEET_YEAR, m[1], m[2]);
+
+  // "M/D/YYYY" (US-style, e.g. what a US-locale spreadsheet may render)
+  m = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (m) return mkDate(m[3], m[1], m[2]);
+
+  // "YYYY-MM-DD", "YYYY/MM/DD", or "YYYY. M. D." (Google Sheets' Korean
+  // locale default date display, dots/spaces, optional trailing period)
+  m = str.match(/^(\d{4})[.\-\/\s]+(\d{1,2})[.\-\/\s]+(\d{1,2})\.?$/);
+  if (m) return mkDate(m[1], m[2], m[3]);
+
+  // "M월 D일" (Korean month/day)
+  m = str.match(/^(\d{1,2})월\s*(\d{1,2})일?$/);
+  if (m) return mkDate(SHEET_YEAR, m[1], m[2]);
+
+  return null;
 }
 
 // Find the first row (searching from the top) whose given column looks like
@@ -550,7 +669,7 @@ function parseCashflowSheet(rows) {
   return cashflow;
 }
 
-function parseSummarySheet(rows) {
+function parseSummarySheet(rows, knownCols) {
   const monthly = [];
   // find the first row whose column A is a "N월" label
   let start = -1;
@@ -558,6 +677,49 @@ function parseSummarySheet(rows) {
     if (/^\d{1,2}월$/.test(String(cell(rows, r, 0)).trim())) { start = r; break; }
   }
   if (start < 0) return monthly;
+
+  // Columns from "매매 수익" onward are NOT fixed offsets across accounts --
+  // '양' inserts an extra "매매 수익(국장)" domestic-stock column right
+  // after "매매 수익(해외)" that '표' doesn't have, shifting every column
+  // after it (배당수익/총수익/매입금액/평가금액/예수금/총자산) one to the
+  // right. deposit/withdraw/exchange columns (1-6) are stable and stay
+  // hardcoded regardless.
+  //
+  // Prefer knownCols (ACCOUNTS[key].summaryCols in buildDashboardData) when
+  // given -- confirmed directly against each account's live sheet header
+  // row by hand. Auto-detecting this by searching header text sounds more
+  // "general", but in practice depended on Google's gviz endpoint reporting
+  // the header row exactly as expected, which repeatedly proved unreliable
+  // (gviz's automatic header-row detection can differ sheet to sheet in
+  // ways this app has no way to observe or predict) and produced wrong
+  // column reads that were hard to diagnose without live access. The
+  // header-text search below only runs as a fallback for an account with
+  // no knownCols configured yet.
+  const headerRow = rows.slice(0, Math.max(start, 0));
+  const headerColPos = (substr) => findCellContaining(headerRow, substr);
+  const headerCol = (substr, fallback) => {
+    const pos = headerColPos(substr);
+    return pos ? pos.col : fallback;
+  };
+  const kc = knownCols || {};
+  const tradeProfitCol = kc.tradeProfitCol != null ? kc.tradeProfitCol : headerCol('매매 수익', 7);
+  const dividendCol = kc.dividendCol != null ? kc.dividendCol : headerCol('배당', 8);
+  const totalProfitCol = kc.totalProfitCol != null ? kc.totalProfitCol : headerCol('총 수익', 9);
+  const buyAmountCol = kc.buyAmountCol != null ? kc.buyAmountCol : headerCol('매입 금액', 10);
+  const evalAmountCol = kc.evalAmountCol != null ? kc.evalAmountCol : headerCol('평가 금액', 11);
+  const cashCol = kc.cashCol != null ? kc.cashCol : headerCol('예수금', 12);
+  const totalAssetsCol = kc.totalAssetsCol != null ? kc.totalAssetsCol : headerCol('총 자산', 13);
+  // Diagnostic trail -- surfaced in the dashboard's "데이터 진단" panel so a
+  // report that this is still wrong can be diagnosed from a screenshot
+  // instead of guessing at the live sheet's exact row layout again.
+  const summaryDebug = {
+    usedHardcodedCols: !!knownCols,
+    headerRowsScanned: headerRow.length,
+    headerRowRaw: headerRow.map(r => (r || []).slice(0, 20)),
+    resolvedCols: {
+      tradeProfitCol, dividendCol, totalProfitCol, buyAmountCol, evalAmountCol, cashCol, totalAssetsCol,
+    },
+  };
 
   for (let r = start; r < start + 12 && r < rows.length; r++) {
     const month = cell(rows, r, 0);
@@ -568,13 +730,13 @@ function parseSummarySheet(rows) {
     const exchUsd = num(cell(rows, r, 4));
     const sellUsd = num(cell(rows, r, 5));
     const sellKrw = num(cell(rows, r, 6));
-    const tradeProfit = num(cell(rows, r, 7));
-    const dividend = num(cell(rows, r, 8));
-    const totalProfit = num(cell(rows, r, 9));
-    const buyAmount = num(cell(rows, r, 10));
-    const evalAmount = num(cell(rows, r, 11));
-    const cash = num(cell(rows, r, 12));
-    const totalAssets = num(cell(rows, r, 13));
+    const tradeProfit = num(cell(rows, r, tradeProfitCol));
+    const dividend = num(cell(rows, r, dividendCol));
+    const totalProfit = num(cell(rows, r, totalProfitCol));
+    const buyAmount = num(cell(rows, r, buyAmountCol));
+    const evalAmount = num(cell(rows, r, evalAmountCol));
+    const cash = num(cell(rows, r, cashCol));
+    const totalAssets = num(cell(rows, r, totalAssetsCol));
     const hasData = [deposit, withdraw, exchKrw, tradeProfit, dividend, totalProfit].some(v => v != null && v !== 0);
     monthly.push({
       month, deposit_krw: deposit, withdraw_krw: withdraw,
@@ -584,49 +746,98 @@ function parseSummarySheet(rows) {
       has_data: hasData,
     });
   }
+  // Attach as a non-index property -- doesn't interfere with monthly.map/
+  // .forEach/.filter (those only ever see the numeric indices), but lets
+  // buildDashboardData pull it out for the diagnostic panel.
+  monthly.__debug = summaryDebug;
   return monthly;
 }
 
-function parseMonthDetailSheet(rows) {
-  // per-ticker realized/dividend block: columns A-E, starting at the first
-  // row whose column A looks like a ticker (skips the header row whichever
-  // index it lands on).
+// Finds the (row, col) of the first cell anywhere in the grid whose text
+// contains `substr`, scanning top-to-bottom then left-to-right (row-major).
+function findCellContaining(rows, substr) {
+  for (let r = 0; r < rows.length; r++) {
+    const row = rows[r] || [];
+    for (let c = 0; c < row.length; c++) {
+      if (String(cell(rows, r, c)).includes(substr)) return { row: r, col: c };
+    }
+  }
+  return null;
+}
+
+function parseMonthDetailSheet(rows, knownTickerCol) {
+  // per-ticker realized/dividend block: 5 columns (종목, 실현손익, 증권사
+  // 원화반영손익, 실현수익률, 배당수익), starting at the first row whose
+  // ticker column looks like a real ticker. The block's column position is
+  // NOT fixed at A across accounts -- some accounts have another block
+  // (e.g. a domestic-stock summary) to its left, shifting it rightward.
+  //
+  // Prefer knownTickerCol (ACCOUNTS[key].monthTickerCol in buildDashboardData)
+  // when given -- confirmed directly against each account's live month tab
+  // (표: A열, 양: G열). Only fall back to anchoring on the "원화 반영"
+  // header text (present in every account's version of this block, worded
+  // either "...원화 반영 손익" or "...원화 반영 수익"; krw_pl sits 2
+  // columns after the ticker column, so ticker column = that header's
+  // column - 2) for an account with no knownTickerCol configured yet --
+  // same rationale as parseSummarySheet's knownCols: this text search
+  // depends on Google's gviz endpoint reporting the header row exactly as
+  // expected, which repeatedly proved unreliable against live data.
   const tickers = [];
-  const tickStart = findFirstTickerRow(rows, 0);
+  let tickerCol;
+  if (knownTickerCol != null) {
+    tickerCol = knownTickerCol;
+  } else {
+    const krwHeaderPos = findCellContaining(rows, '원화 반영');
+    tickerCol = krwHeaderPos ? krwHeaderPos.col - 2 : 0;
+  }
+  const tickStart = tickerCol >= 0 ? findFirstTickerRow(rows, tickerCol) : -1;
   if (tickStart >= 0) {
     for (let r = tickStart; r < rows.length; r++) {
-      const a = cell(rows, r, 0);
+      const a = cell(rows, r, tickerCol);
       if (!a) break;
       if (a === '날짜') break;
       if (a === '합 계') continue;
       if (!/^[A-Z][A-Z0-9.]{0,5}$/.test(String(a).trim())) break;
       tickers.push({
         ticker: a,
-        realized_pl: num(cell(rows, r, 1)),
-        krw_pl: num(cell(rows, r, 2)),
-        realized_return_pct: num(cell(rows, r, 3)),
-        dividend: num(cell(rows, r, 4)),
+        realized_pl: num(cell(rows, r, tickerCol + 1)),
+        krw_pl: num(cell(rows, r, tickerCol + 2)),
+        realized_return_pct: num(cell(rows, r, tickerCol + 3)),
+        dividend: num(cell(rows, r, tickerCol + 4)),
       });
     }
   }
 
-  // daily equity block: find the row where column G (index 6) === '날짜'
-  let dateRow = -1;
-  for (let r = 0; r < rows.length; r++) {
-    if (cell(rows, r, 6) === '날짜') { dateRow = r; break; }
+  // daily equity block: find the row/column whose cell text is exactly
+  // '날짜' -- same reasoning as above, the label's column is NOT assumed
+  // fixed (some accounts have it at G, others further right).
+  let dateRow = -1, dateCol = -1;
+  for (let r = 0; r < rows.length && dateRow < 0; r++) {
+    const row = rows[r] || [];
+    for (let c = 0; c < row.length; c++) {
+      if (cell(rows, r, c) === '날짜') { dateRow = r; dateCol = c; break; }
+    }
   }
   const dailyEquity = [];
+  // debug trail: exactly what raw cell text was seen per column and what it
+  // parsed to (or why it was skipped) -- surfaced in the dashboard's
+  // diagnostic panel so a "why isn't date X showing" report can be resolved
+  // from a screenshot instead of guessing at the sheet's exact layout.
+  const dateDebug = { labelFound: dateRow >= 0, columns: [] };
   if (dateRow >= 0) {
     const labelRows = {};
     for (let rr = dateRow; rr < dateRow + 6 && rr < rows.length; rr++) {
-      const lbl = cell(rows, rr, 6);
+      const lbl = cell(rows, rr, dateCol);
       if (lbl) labelRows[lbl] = rr;
     }
     const maxCol = rows[dateRow] ? rows[dateRow].length : 0;
-    for (let c = 7; c < maxCol; c++) {
+    for (let c = dateCol + 1; c < maxCol; c++) {
       const dt = cell(rows, dateRow, c);
-      if (!dt) continue;
-      const entry = { date: parseMD(dt) };
+      if (!dt) { dateDebug.columns.push({ col: c, raw: '', parsed: null, reason: 'empty' }); continue; }
+      const parsed = parseMD(dt);
+      dateDebug.columns.push({ col: c, raw: dt, parsed, reason: parsed ? 'ok' : 'unparsed_format' });
+      if (!parsed) continue;
+      const entry = { date: parsed };
       if (labelRows['매입 금액'] != null) entry.buy_amount = num(cell(rows, labelRows['매입 금액'], c));
       if (labelRows['평가 금액'] != null) entry.eval_amount = num(cell(rows, labelRows['평가 금액'], c));
       if (labelRows['예수금'] != null) entry.cash = num(cell(rows, labelRows['예수금'], c));
@@ -636,7 +847,7 @@ function parseMonthDetailSheet(rows) {
     }
   }
 
-  return { tickers, dailyEquity };
+  return { tickers, dailyEquity, dateDebug };
 }
 
 // Parses the '종목별 일별 기록' tab: header row (날짜, 종목명, 평가손익, 수익률)
@@ -656,31 +867,47 @@ function parseTickerHistorySheet(rows) {
   return map;
 }
 
-async function buildDashboardData() {
+async function buildDashboardData(accountKey) {
+  const cfg = ACCOUNTS[accountKey] || ACCOUNTS[DEFAULT_ACCOUNT];
+  // set the module-level "current account" state that fetchSheetRows/parseMD
+  // read implicitly (see ACCOUNTS comment above)
+  SHEET_ID = cfg.sheetId;
+  SHEET_YEAR = cfg.sheetYear;
+
   // NOTE: these must run strictly one at a time (not Promise.all) because
   // fetchSheetRows hooks a single shared global callback
   // (google.visualization.Query.setResponse) per in-flight request.
   const [tradeRows, cashflowRows, summaryRows] = await fetchAllSequential(
-    [TRADE_LOG_SHEET, CASHFLOW_SHEET, SUMMARY_SHEET]
+    [cfg.tradeLogSheet, cfg.cashflowSheet, cfg.summarySheet]
   );
 
   const { fxRate, trades, holdings, realized } = parseTradeLogSheet(tradeRows);
   const cashflow = parseCashflowSheet(cashflowRows);
-  const monthly = parseSummarySheet(summaryRows);
+  const monthly = parseSummarySheet(summaryRows, cfg.summaryCols);
+  const summaryDebug = monthly.__debug || null;
 
-  const monthSheetNames = Array.from({ length: 12 }, (_, i) => `${i + 1}월`);
+  // monthLabels are the LOGICAL keys used everywhere else in the app (must
+  // match parseSummarySheet's plain 'N월' labels); monthSheetNames are the
+  // ACTUAL tab names to fetch, which may carry a per-account suffix.
+  const monthLabels = Array.from({ length: 12 }, (_, i) => `${i + 1}월`);
+  const monthSheetNames = monthLabels.map(m => m + cfg.monthSheetSuffix);
   const monthResults = await fetchAllSequential(monthSheetNames, true);
-  const historyRows = await fetchSheetRowsOptional(HISTORY_SHEET);
+  const historyRows = await fetchSheetRowsOptional(cfg.historySheet);
   const tickerHistory = historyRows ? parseTickerHistorySheet(historyRows) : {};
 
   let dailyEquity = [];
   const monthlyTickerPl = {};
+  // per-month diagnostic trail, surfaced in the dashboard's "데이터 진단"
+  // panel -- lets a "why didn't date X show up" report be answered from a
+  // screenshot of that panel instead of guessing at the sheet's layout.
+  const monthDebug = {};
   monthResults.forEach((rows, idx) => {
-    if (!rows) return;
-    const name = monthSheetNames[idx];
-    const { tickers, dailyEquity: eq } = parseMonthDetailSheet(rows);
+    const name = monthLabels[idx];
+    if (!rows) { monthDebug[name] = { sheetFound: false }; return; }
+    const { tickers, dailyEquity: eq, dateDebug } = parseMonthDetailSheet(rows, cfg.monthTickerCol);
     if (tickers.length) monthlyTickerPl[name] = tickers;
     dailyEquity = dailyEquity.concat(eq);
+    monthDebug[name] = { sheetFound: true, labelFound: dateDebug.labelFound, columns: dateDebug.columns };
   });
 
   // dedupe by date (sheets overlap by one day at month boundaries), sort chronologically
@@ -691,7 +918,13 @@ async function buildDashboardData() {
   dailyEquity = Object.keys(byDate).sort().map(k => byDate[k]);
 
   const ffFields = ['buy_amount', 'eval_amount', 'cash', 'total_assets', 'return_pct'];
-  const todayStr = new Date().toISOString().slice(0, 10);
+  // Local calendar date, NOT toISOString() (which is UTC) -- for a KST
+  // viewer, UTC lags ~9 hours behind local, so a UTC cutoff would silently
+  // hide the just-entered "today" row for hours after local midnight (it
+  // looks like "today's data doesn't show up yet" when it's really a
+  // timezone mismatch, not a real delay).
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   dailyEquity = dailyEquity.filter(e => e.date <= todayStr);
   while (dailyEquity.length && !ffFields.some(f => dailyEquity[dailyEquity.length - 1][f] != null)) {
     dailyEquity.pop();
@@ -709,25 +942,56 @@ async function buildDashboardData() {
 
   const currentSnapshot = dailyEquity.length ? dailyEquity[dailyEquity.length - 1] : {};
 
+  // A month's own tab (daily equity block) can have real data -- including
+  // "today" -- well before the separate yearly-summary sheet's row for that
+  // month gets filled in (that row is often only updated at month's end).
+  // Without this, every UI element that only offers months where
+  // monthly[].has_data is true (the trend-chart month tabs, the "월별 상세
+  // 내역" tabs) would hide a fresh month's chart/tooltip data even though it
+  // genuinely exists in the month tab -- this is why "오늘 데이터가 안
+  // 보여요" reports can happen even after the data is correctly recorded:
+  // the newest month simply isn't offered as a tab yet.
+  //
+  // Deliberately NOT using monthlyTickerPl presence for this signal (unlike
+  // dailyEquity): users often pre-create every month's tab in advance by
+  // duplicating a template, and an untouched copy for a future month can
+  // still contain the template's old sample ticker numbers in the
+  // realized/dividend block even though nothing real happened that month
+  // yet. Trusting that presence as "real data" was making every future,
+  // still-empty month (e.g. 9-12월) show up with a bogus 원화반영손익/배당
+  // figure carried over from the template. dailyEquity has no equivalent
+  // problem -- it's written by a daily-recording script, so a future date
+  // simply has no row at all until that day actually happens.
+  const monthsWithDetailData = new Set(dailyEquity.map(e => `${parseInt(e.date.slice(5, 7), 10)}월`));
+  monthly.forEach(m => {
+    if (monthsWithDetailData.has(m.month)) m.has_data = true;
+  });
+
   return {
     generated_at: new Date().toISOString(),
     fx_rate: fxRate,
+    sheet_year: SHEET_YEAR,
+    account: cfg.label,
     trades, holdings, realized, cashflow, monthly,
     daily_equity: dailyEquity,
     monthly_ticker_pl: monthlyTickerPl,
     current_snapshot: currentSnapshot,
     ticker_history: tickerHistory,
+    month_debug: monthDebug,
+    summary_debug: summaryDebug,
+    today_str: todayStr,
   };
 }
 
 // exported for both the browser (window) and a CommonJS test harness (Node)
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { cell, num, parseMD, findFirstTickerRow, parseTradeLogSheet, parseCashflowSheet, parseSummarySheet, parseMonthDetailSheet, parseTickerHistorySheet, buildDashboardData, gvizTableToRows };
+  module.exports = { cell, num, parseMD, findCellContaining, findFirstTickerRow, parseTradeLogSheet, parseCashflowSheet, parseSummarySheet, parseMonthDetailSheet, parseTickerHistorySheet, buildDashboardData, gvizTableToRows, ACCOUNTS, DEFAULT_ACCOUNT };
 }
 </script>
 <script>
 (function () {
   let DATA = null;
+  let currentAccount = DEFAULT_ACCOUNT;
 
   // ---------- helpers ----------
   const fmtUSD = (v, opts) => v == null ? '-' : '$' + Number(v).toLocaleString('en-US', Object.assign({minimumFractionDigits:2, maximumFractionDigits:2}, opts||{}));
@@ -752,15 +1016,16 @@ if (typeof module !== 'undefined' && module.exports) {
   const root = document.documentElement;
   const btn = document.getElementById('themeToggle');
   let rebuildChartsRef = () => {};
-  let assetChart, returnChart, depositChart, profitChart;
+  let assetChart, returnChart;
+  // Always opens in light mode by default -- dark mode is only ever active
+  // after the user explicitly clicks this button (not tied to the OS/browser
+  // system color-scheme preference), and resets to light on next load.
   function applyThemeLabel() {
-    const dark = root.getAttribute('data-theme') === 'dark' ||
-      (!root.getAttribute('data-theme') && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    const dark = root.getAttribute('data-theme') === 'dark';
     btn.textContent = dark ? '라이트 모드' : '다크 모드';
   }
   btn.addEventListener('click', () => {
-    const cur = root.getAttribute('data-theme');
-    const dark = cur === 'dark' || (!cur && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    const dark = root.getAttribute('data-theme') === 'dark';
     root.setAttribute('data-theme', dark ? 'light' : 'dark');
     applyThemeLabel();
     setTimeout(() => rebuildChartsRef(), 30);
@@ -791,7 +1056,7 @@ if (typeof module !== 'undefined' && module.exports) {
     refreshBtn.textContent = '⏳ 불러오는 중…';
     if (!DATA) showStatus('Google Sheets에서 최신 데이터를 불러오는 중입니다…');
     try {
-      const data = await buildDashboardData();
+      const data = await buildDashboardData(currentAccount);
       DATA = data;
       hideStatus();
       dashboardBody.style.display = '';
@@ -811,6 +1076,29 @@ if (typeof module !== 'undefined' && module.exports) {
     }
   }
   refreshBtn.addEventListener('click', loadAndRender);
+
+  const accountTabs = document.getElementById('accountTabs');
+  accountTabs.addEventListener('click', (e) => {
+    const btn = e.target.closest('.month-tab');
+    if (!btn || btn.dataset.account === currentAccount) return;
+    currentAccount = btn.dataset.account;
+    [...accountTabs.children].forEach(b => b.classList.toggle('active', b.dataset.account === currentAccount));
+    // switching accounts is a full reload, not an in-place refresh -- drop
+    // the previous account's data so a fetch failure shows "불러오지
+    // 못했습니다" instead of misleadingly re-showing the OTHER account's
+    // last-successful data under the newly-selected tab.
+    DATA = null;
+    dashboardBody.style.display = 'none';
+    loadAndRender();
+  });
+
+  const diagToggle = document.getElementById('diagToggle');
+  const diagPanel = document.getElementById('diagPanel');
+  diagToggle.addEventListener('click', () => {
+    const showing = diagPanel.style.display !== 'none';
+    diagPanel.style.display = showing ? 'none' : 'block';
+    diagToggle.textContent = showing ? '🔧 데이터 진단 정보 보기' : '🔧 데이터 진단 정보 숨기기';
+  });
 
   function renderDashboard(DATA) {
   // ---------- header meta ----------
@@ -857,11 +1145,21 @@ if (typeof module !== 'undefined' && module.exports) {
   const tickerHistoryMap = DATA.ticker_history || {};
 
   // ---------- Section 3: charts ----------
-  const eq = DATA.daily_equity || [];
-  const eqLabels = eq.map(e => e.date.slice(5));
-  // 수익률 차트는 최근 31일만 (달이 바뀌어도 오늘 기준 최근 31일 슬라이딩)
-  const eqReturn = eq.slice(-31);
-  const eqReturnLabels = eqReturn.map(e => e.date.slice(5));
+  // Both trend charts are filtered to a single selected month (via the tabs
+  // below) so a given month's chart stays reachable no matter how much time
+  // passes -- an unfiltered all-time chart or a rolling "last 31 days"
+  // window would otherwise slide past a given month and lose it.
+  const monthly = (DATA.monthly || []).filter(m => m.has_data);
+  const monthKeys = monthly.map(m => m.month);
+  let trendMonth = monthKeys.length ? monthKeys[monthKeys.length - 1] : null;
+  const eqAll = DATA.daily_equity || [];
+  function eqForMonth(monthLabel) {
+    if (!monthLabel) return [];
+    const mKey = String(monthNumFromLabel(monthLabel)).padStart(2, '0');
+    return eqAll.filter(e => e.date.slice(5, 7) === mKey);
+  }
+  let eq = eqForMonth(trendMonth);
+  let eqLabels = eq.map(e => e.date.slice(5));
   const gridColor = () => cssVar('--grid');
   const axisColor = () => cssVar('--axis');
   const textMuted = () => cssVar('--text-muted');
@@ -913,14 +1211,15 @@ if (typeof module !== 'undefined' && module.exports) {
   // Return-rate chart uses a custom HTML tooltip (instead of Chart.js's
   // canvas-rendered default) so we can show each held ticker's valuation
   // P&L/return alongside the account return, colored red(상승)/blue(하락).
-  // Shows the most recent 31 days on a rolling window. Per-ticker figures
-  // come from tickerHistoryMap (the sheet's '종목별 일별 기록' tab) for that
-  // exact date -- so the numbers genuinely differ day to day as the Apps
-  // Script records new days, instead of always reflecting today's holdings.
+  // Shows the currently-selected month (see trend-chart tabs). Per-ticker
+  // figures come from tickerHistoryMap (the sheet's '종목별 일별 기록' tab)
+  // for that exact date -- so the numbers genuinely differ day to day as
+  // the Apps Script records new days, instead of always reflecting today's
+  // holdings.
   function buildReturnChart() {
     const canvas = document.getElementById('returnChart');
     const ctx = canvas.getContext('2d');
-    const vals = eqReturn.map(e => e.return_pct == null ? null : e.return_pct * 100);
+    const vals = eq.map(e => e.return_pct == null ? null : e.return_pct * 100);
     const chartCard = canvas.closest('.chart-card');
     let tooltipEl = chartCard.querySelector('.custom-tooltip');
     if (!tooltipEl) {
@@ -935,7 +1234,7 @@ if (typeof module !== 'undefined' && module.exports) {
       if (tooltip.opacity === 0) { tooltipEl.style.opacity = 0; return; }
       const dp = tooltip.dataPoints && tooltip.dataPoints[0];
       const dataIndex = dp ? dp.dataIndex : null;
-      const date = dataIndex != null ? eqReturn[dataIndex].date : '';
+      const date = dataIndex != null ? eq[dataIndex].date : '';
       const retVal = dataIndex != null ? vals[dataIndex] : null;
       let html = `<div class="ctt-title">${date}</div>`;
       html += `<div class="ctt-row"><span>계좌 수익률</span><span style="color:${upDownColor(retVal)}; font-weight:700;">${retVal == null ? '-' : Math.abs(retVal).toFixed(2) + '%'}</span></div>`;
@@ -961,7 +1260,7 @@ if (typeof module !== 'undefined' && module.exports) {
 
     returnChart = new Chart(ctx, {
       type: 'line',
-      data: { labels: eqReturnLabels, datasets: [
+      data: { labels: eqLabels, datasets: [
         { label: '수익률', data: vals, borderColor: cssVar('--series-1'), backgroundColor: cssVar('--series-1') + '1a', fill: true },
       ]},
       options: Object.assign(baseLineOptions((v) => v + '%'), {
@@ -994,8 +1293,29 @@ if (typeof module !== 'undefined' && module.exports) {
     </tr>`;
 
   // ---------- Section 1: monthly table ----------
-  const monthly = (DATA.monthly || []).filter(m => m.has_data);
+  // (monthly/monthKeys computed earlier, above, for the trend-chart tabs)
+  // moved up here (was declared further below, next to trades/cashflow) so
+  // the annual summary can aggregate the broker's KRW-converted realized P&L
+  const monthTicker = DATA.monthly_ticker_pl || {};
+  // null (not 0) when a month has no realized-KRW entries at all, matching
+  // the existing convention elsewhere (null -> '-', no color) rather than
+  // showing a colored ₩0 for months with no realized trades.
+  const krwRealizedForMonth = (month) => {
+    const entries = (monthTicker[month] || []).filter(d => d.krw_pl != null);
+    return entries.length ? entries.reduce((acc, d) => acc + d.krw_pl, 0) : null;
+  };
+
   const monthlyBody = document.getElementById('monthlyBody');
+  const sumField = (f) => monthly.reduce((acc, m) => acc + (m[f] || 0), 0);
+  const annual = {
+    deposit_krw: sumField('deposit_krw'),
+    withdraw_krw: sumField('withdraw_krw'),
+    exchange_krw: sumField('exchange_krw'),
+    trade_profit: sumField('trade_profit'),
+    krw_realized_pl: monthly.reduce((acc, m) => acc + (krwRealizedForMonth(m.month) || 0), 0),
+    dividend: sumField('dividend'),
+    total_profit: sumField('total_profit'),
+  };
   monthlyBody.innerHTML = monthly.map(m => `
     <tr>
       <td>${m.month}</td>
@@ -1003,66 +1323,49 @@ if (typeof module !== 'undefined' && module.exports) {
       <td>${fmtKRW(m.withdraw_krw)}</td>
       <td>${fmtKRW(m.exchange_krw)}</td>
       <td class="${cls(m.trade_profit)}">${fmtUSDAbs(m.trade_profit)}</td>
+      <td class="${cls(krwRealizedForMonth(m.month))}">${fmtKRWAbs(krwRealizedForMonth(m.month))}</td>
       <td class="${cls(m.dividend)}">${fmtUSDAbs(m.dividend)}</td>
       <td class="${cls(m.total_profit)}">${fmtUSDAbs(m.total_profit)}</td>
-    </tr>`).join('');
+    </tr>`).join('') + (monthly.length ? `
+    <tr class="total-row">
+      <td>합계</td>
+      <td>${fmtKRW(annual.deposit_krw)}</td>
+      <td>${fmtKRW(annual.withdraw_krw)}</td>
+      <td>${fmtKRW(annual.exchange_krw)}</td>
+      <td class="${cls(annual.trade_profit)}">${fmtUSDAbs(annual.trade_profit)}</td>
+      <td class="${cls(annual.krw_realized_pl)}">${fmtKRWAbs(annual.krw_realized_pl)}</td>
+      <td class="${cls(annual.dividend)}">${fmtUSDAbs(annual.dividend)}</td>
+      <td class="${cls(annual.total_profit)}">${fmtUSDAbs(annual.total_profit)}</td>
+    </tr>` : '');
 
-  function buildDepositChart() {
-    const ctx = document.getElementById('depositChart').getContext('2d');
-    depositChart = new Chart(ctx, {
-      type: 'bar',
-      data: {
-        labels: monthly.map(m => m.month),
-        datasets: [
-          { label: '입금', data: monthly.map(m => m.deposit_krw), backgroundColor: cssVar('--series-1'), borderRadius: 4, maxBarThickness: 20 },
-          { label: '출금', data: monthly.map(m => m.withdraw_krw), backgroundColor: cssVar('--series-2'), borderRadius: 4, maxBarThickness: 20 },
-        ],
-      },
-      options: {
-        responsive: true,
-        plugins: {
-          legend: { display: true, position: 'bottom', labels: { color: textSecondary(), boxWidth: 8, boxHeight: 8, usePointStyle: true, font: {size: 11} } },
-          tooltip: { callbacks: { label: (c) => c.dataset.label + ': ' + fmtKRW(c.raw) } },
-        },
-        scales: {
-          x: { grid: { display: false }, ticks: { color: textMuted() } },
-          y: { grid: { color: gridColor() }, border: {display:false}, ticks: { color: textMuted(), callback: (v) => (v/10000) + '만' } },
-        },
-      },
-    });
-  }
+  const section1Sub = document.getElementById('section1Sub');
+  section1Sub.textContent = `'${DATA.sheet_year || ''} ${DATA.account || ''}' 시트의 월별 집계와 원본 거래 로그를 함께 보여줍니다.`.replace(/^'\s+/, "'");
 
-  function buildProfitChart() {
-    const ctx = document.getElementById('profitChart').getContext('2d');
-    profitChart = new Chart(ctx, {
-      type: 'bar',
-      data: {
-        labels: monthly.map(m => m.month),
-        datasets: [
-          { label: '매매손익', data: monthly.map(m => m.trade_profit), backgroundColor: cssVar('--series-1'), borderRadius: 4, maxBarThickness: 20 },
-          { label: '배당수익', data: monthly.map(m => m.dividend), backgroundColor: cssVar('--series-4'), borderRadius: 4, maxBarThickness: 20 },
-        ],
-      },
-      options: {
-        responsive: true,
-        plugins: {
-          legend: { display: true, position: 'bottom', labels: { color: textSecondary(), boxWidth: 8, boxHeight: 8, usePointStyle: true, font: {size: 11} } },
-          tooltip: { callbacks: { label: (c) => c.dataset.label + ': ' + fmtUSD(c.raw) } },
-        },
-        scales: {
-          x: { grid: { display: false }, ticks: { color: textMuted() } },
-          y: { grid: { color: gridColor() }, border: {display:false}, ticks: { color: textMuted(), callback: (v) => '$' + v } },
-        },
-      },
-    });
-  }
+  const annualTitle = document.getElementById('annualTitle');
+  annualTitle.textContent = (DATA.sheet_year ? `${DATA.sheet_year}년 종합 실적` : '연간 종합 실적') + (monthly.length ? ` (${monthly[0].month}~${monthly[monthly.length - 1].month})` : '');
+  const annualStatRow = document.getElementById('annualStatRow');
+  const annualDefs = [
+    { label: '총입금', value: fmtKRW(annual.deposit_krw) },
+    { label: '총출금', value: fmtKRW(annual.withdraw_krw) },
+    { label: '총환전', value: fmtKRW(annual.exchange_krw) },
+    { label: '총매매손익', value: fmtUSDAbs(annual.trade_profit), deltaClass: cls(annual.trade_profit) },
+    { label: '총 원화반영손익', value: fmtKRWAbs(annual.krw_realized_pl), deltaClass: cls(annual.krw_realized_pl) },
+    { label: '총배당수익', value: fmtUSDAbs(annual.dividend), deltaClass: cls(annual.dividend) },
+    { label: '총수익', value: fmtUSDAbs(annual.total_profit), deltaClass: cls(annual.total_profit) },
+  ];
+  annualStatRow.innerHTML = monthly.length ? annualDefs.map(s => `
+    <div class="stat-tile">
+      <div class="stat-label">${s.label}</div>
+      <div class="stat-value ${s.deltaClass||''}" style="font-size:18px;">${s.value}</div>
+    </div>`).join('') : `<div class="stat-tile"><div class="stat-label">데이터 없음</div></div>`;
+
 
   // ---------- Section 1: month detail tabs ----------
   const trades = DATA.trades || [];
   const cashflow = DATA.cashflow || [];
-  const monthTicker = DATA.monthly_ticker_pl || {};
+  // (monthTicker/krwRealizedForMonth computed earlier, above, for the annual summary)
   const monthTabs = document.getElementById('monthTabs');
-  const monthKeys = monthly.map(m => m.month);
+  // (monthKeys computed earlier, above, for the trend-chart tabs)
   let activeMonth = monthKeys[monthKeys.length - 1];
 
   monthTabs.innerHTML = monthKeys.map(m => `<button class="month-tab" data-month="${m}">${m}</button>`).join('');
@@ -1078,12 +1381,14 @@ if (typeof module !== 'undefined' && module.exports) {
     const mKey = String(mn).padStart(2, '0');
 
     const mInfo = monthly.find(m => m.month === month) || {};
+    const mKrwRealized = krwRealizedForMonth(month);
     const statRow2 = document.getElementById('monthStatRow');
     statRow2.innerHTML = `
       <div class="month-stat"><div class="l">입금</div><div class="v">${fmtKRW(mInfo.deposit_krw)}</div></div>
       <div class="month-stat"><div class="l">출금</div><div class="v">${fmtKRW(mInfo.withdraw_krw)}</div></div>
       <div class="month-stat"><div class="l">환전</div><div class="v">${fmtKRW(mInfo.exchange_krw)}</div></div>
       <div class="month-stat"><div class="l">매매손익</div><div class="v ${cls(mInfo.trade_profit)}">${fmtUSDAbs(mInfo.trade_profit)}</div></div>
+      <div class="month-stat"><div class="l">원화반영손익</div><div class="v ${cls(mKrwRealized)}">${fmtKRWAbs(mKrwRealized)}</div></div>
       <div class="month-stat"><div class="l">배당수익</div><div class="v ${cls(mInfo.dividend)}">${fmtUSDAbs(mInfo.dividend)}</div></div>
       <div class="month-stat"><div class="l">총수익</div><div class="v ${cls(mInfo.total_profit)}">${fmtUSDAbs(mInfo.total_profit)}</div></div>
     `;
@@ -1124,21 +1429,107 @@ if (typeof module !== 'undefined' && module.exports) {
     if (btn) renderMonthDetail(btn.dataset.month);
   });
 
-  // ---------- init / rebuild on theme toggle ----------
+  // ---------- init / rebuild on theme toggle & trend-chart month tabs ----------
   function destroyCharts() {
-    [assetChart, returnChart, depositChart, profitChart].forEach(c => c && c.destroy());
+    [assetChart, returnChart].forEach(c => c && c.destroy());
+    assetChart = null;
+    returnChart = null;
   }
-  function rebuildCharts() {
+  const trendMonthTabs = document.getElementById('trendMonthTabs');
+  trendMonthTabs.innerHTML = monthKeys.map(m => `<button class="month-tab" data-month="${m}">${m}</button>`).join('');
+  function renderTrendMonth(month) {
+    trendMonth = month;
+    [...trendMonthTabs.children].forEach(b => b.classList.toggle('active', b.dataset.month === month));
+    eq = eqForMonth(month);
+    eqLabels = eq.map(e => e.date.slice(5));
+    document.getElementById('assetChartTitle').textContent = `자산 추이 (총자산 · 평가금액 · 매입금액 · 예수금, USD)${month ? ' · ' + month : ''}`;
+    document.getElementById('returnChartTitle').textContent = `수익률 추이 (%)${month ? ' · ' + month : ''}`;
+    const hasData = eq.length > 0;
+    // destroy BEFORE touching canvas display styles: Chart.js's destroy()
+    // resets the canvas element's style attribute, which would otherwise
+    // wipe out a 'display: none' we just set below.
     destroyCharts();
-    buildAssetChart();
-    buildReturnChart();
-    buildDepositChart();
-    buildProfitChart();
+    document.getElementById('assetChart').style.display = hasData ? '' : 'none';
+    document.getElementById('assetChartEmpty').style.display = hasData ? 'none' : 'block';
+    document.getElementById('returnChart').style.display = hasData ? '' : 'none';
+    document.getElementById('returnChartEmpty').style.display = hasData ? 'none' : 'block';
+    if (hasData) {
+      buildAssetChart();
+      buildReturnChart();
+    }
+  }
+  trendMonthTabs.addEventListener('click', (e) => {
+    const btn = e.target.closest('.month-tab');
+    if (btn) renderTrendMonth(btn.dataset.month);
+  });
+  function rebuildCharts() {
+    renderTrendMonth(trendMonth);
   }
   rebuildChartsRef = rebuildCharts;
 
-  rebuildCharts();
+  renderTrendMonth(trendMonth);
   if (monthKeys.length) renderMonthDetail(activeMonth);
+
+  // ---------- diagnostic panel ("데이터 진단 정보 보기") ----------
+  // Shows exactly what each month sheet's daily-record header row (날짜/매입
+  // 금액/평가 금액/예수금/총 자산/수익률) produced, column by column, so a
+  // "왜 이 날짜가 안 나오지" question can be answered from a screenshot of
+  // this panel instead of guessing at the sheet's layout from here.
+  (function renderDiagPanel() {
+    const mDebug = DATA.month_debug || {};
+    const foundMonths = Object.keys(mDebug).filter(m => mDebug[m].sheetFound);
+    const notFoundMonths = Object.keys(mDebug).filter(m => !mDebug[m].sheetFound);
+
+    let html = `<div class="diag-summary">
+      기기의 오늘 날짜(로컬 기준): <b>${DATA.today_str || '-'}</b> · 불러온 일별 자산 기록: <b>${eqAll.length}</b>일
+      ${eqAll.length ? `(${eqAll[0].date} ~ ${eqAll[eqAll.length - 1].date})` : ''}
+      ${notFoundMonths.length ? `<br>시트를 찾지 못한 월: ${notFoundMonths.join(', ')} (탭이 아직 없으면 정상입니다)` : ''}
+    </div>`;
+
+    // 연간 요약 시트(2026 표/2026 양)에서 매매손익·배당수익 등 열을 어느
+    // 위치로 찾았는지 보여주는 진단 -- 이 열이 잘못 잡히면 매매손익/배당
+    // 수치가 서로 뒤바뀌거나 엉뚱한 값(예: "7월"에서 숫자 7만 읽힘)이 나옴
+    const sDebug = DATA.summary_debug;
+    if (sDebug) {
+      const rc = sDebug.resolvedCols || {};
+      html += `<div class="diag-month"><div class="diag-head">연간 요약 시트 열 인식 결과 (${sDebug.usedHardcodedCols ? '계좌별로 미리 확인해둔 고정 위치 사용' : `자동 탐색 사용, 스캔한 헤더 줄 수: ${sDebug.headerRowsScanned}`})</div>
+        <table><thead><tr><th>항목</th><th>찾은 열(A=1)</th></tr></thead><tbody>
+          <tr><td>매매손익</td><td>${rc.tradeProfitCol != null ? rc.tradeProfitCol + 1 : '-'}</td></tr>
+          <tr><td>배당수익</td><td>${rc.dividendCol != null ? rc.dividendCol + 1 : '-'}</td></tr>
+          <tr><td>총수익</td><td>${rc.totalProfitCol != null ? rc.totalProfitCol + 1 : '-'}</td></tr>
+          <tr><td>매입금액</td><td>${rc.buyAmountCol != null ? rc.buyAmountCol + 1 : '-'}</td></tr>
+          <tr><td>평가금액</td><td>${rc.evalAmountCol != null ? rc.evalAmountCol + 1 : '-'}</td></tr>
+          <tr><td>예수금</td><td>${rc.cashCol != null ? rc.cashCol + 1 : '-'}</td></tr>
+          <tr><td>총자산</td><td>${rc.totalAssetsCol != null ? rc.totalAssetsCol + 1 : '-'}</td></tr>
+        </tbody></table>
+        <div class="diag-sub" style="margin-top:6px;">스캔한 헤더 원본 줄:</div>
+        <table><tbody>${(sDebug.headerRowRaw || []).map((r, i) => `<tr><td>줄${i+1}</td><td>${r.map((v,ci) => v ? `${ci+1}:${v}` : '').filter(Boolean).join(' | ') || '(비어있음)'}</td></tr>`).join('')}</tbody></table>
+      </div>`;
+    }
+
+    foundMonths.forEach(m => {
+      const info = mDebug[m];
+      if (!info.labelFound) {
+        html += `<div class="diag-month"><div class="diag-head">${m}</div>
+          <div class="diag-fail">G열에서 '날짜' 라벨을 찾지 못했습니다 -- 이 월 시트의 표 구조(라벨이 있는 열/행)가 다른 월과 다를 수 있습니다.</div></div>`;
+        return;
+      }
+      const cols = info.columns || [];
+      const failed = cols.filter(c => c.reason !== 'ok' && c.reason !== 'empty');
+      html += `<div class="diag-month"><div class="diag-head">${m} -- 총 ${cols.length}개 열 중 인식 성공 ${cols.length - failed.length - cols.filter(c=>c.reason==='empty').length}개, 실패 ${failed.length}개</div>`;
+      if (cols.length) {
+        html += `<table><thead><tr><th>열(H부터)</th><th>시트에 표시된 값</th><th>인식 결과</th></tr></thead><tbody>` +
+          cols.map(c => `<tr class="${c.reason === 'ok' ? 'diag-ok' : (c.reason === 'empty' ? 'diag-ok' : 'diag-fail')}">
+            <td>${c.col + 1}</td>
+            <td>${c.raw || '(비어있음)'}</td>
+            <td>${c.reason === 'ok' ? c.parsed : (c.reason === 'empty' ? '-' : '인식 실패')}</td>
+          </tr>`).join('') + `</tbody></table>`;
+      }
+      html += `</div>`;
+    });
+
+    diagPanel.innerHTML = html;
+  })();
   } // end renderDashboard
 
   loadAndRender();
