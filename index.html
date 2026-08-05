@@ -127,7 +127,7 @@
   .custom-tooltip {
     position: absolute; pointer-events: none; opacity: 0; z-index: 20;
     background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px;
-    padding: 8px 10px; font-size: 12px; min-width: 180px; max-width: 260px;
+    padding: 8px 10px; font-size: 12px; min-width: 180px; max-width: 320px;
     box-shadow: 0 4px 14px rgba(0,0,0,0.18); transition: opacity 0.08s ease-out;
   }
   .custom-tooltip .ctt-title { font-weight: 700; margin-bottom: 4px; color: var(--text-primary); }
@@ -320,11 +320,22 @@ const ACCOUNTS = {
     tradeLogSheet: '매매 일지',
     cashflowSheet: '입출금 및 환전',
     // Populated by an Apps Script bound to the spreadsheet (see setup guide)
-    // that runs on open and appends that day's per-ticker 평가손익/수익률.
-    // Optional -- if this tab doesn't exist (script not installed), the
-    // dashboard simply shows no per-ticker breakdown in the tooltip.
+    // -- now run on-demand via a "오늘 기록 저장" sheet menu item instead of
+    // automatically on open, so a stale/incomplete snapshot doesn't get
+    // recorded just from opening the sheet before that day's trades are
+    // entered. Optional -- if this tab doesn't exist (script not installed
+    // yet), the dashboard simply shows no per-ticker breakdown in the
+    // tooltip.
     historySheet: '종목별 일별 기록',
     monthSheetSuffix: '',
+    // Column M (0-indexed 12) of the '매매 일지' sheet's "현재 계좌 요약"
+    // block (G~L) -- a manually-added GOOGLEFINANCE-backed formula column,
+    // e.g. `=IFERROR(TEXT(GOOGLEFINANCE(G5,"changepct"),"0.00")&"%","")`,
+    // giving each held ticker's % change vs the previous close. The daily
+    // recording script also reads this column and freezes its value into
+    // that day's row in historySheet. Optional -- if blank/missing, shows
+    // '-'.
+    holdingsDailyChangeCol: 12,
     // Confirmed directly against the live '2026 표' sheet's header row:
     // H=매매 수익, I=배당 수익, J=총 수익(매매+배당), K=매입 금액,
     // L=평가 금액, M=예수금, N=총 자산. Hardcoded (0-indexed, A=0) instead
@@ -347,6 +358,10 @@ const ACCOUNTS = {
     cashflowSheet: '입출금 및 환전(양뿡)',
     historySheet: '종목별 일별 기록(양뿡)',
     monthSheetSuffix: '(양뿡)',
+    // Same column letter (M) as '표' -- the user set both sheets up with
+    // the 전일대비 formula in M, repurposing the previously-unused '평가
+    // 손익' header there rather than the N column originally suggested.
+    holdingsDailyChangeCol: 12,
     // Confirmed directly against the live '2026 양' sheet's header row:
     // H=매매 수익(해외), I=매매 수익(국장, 사용 안 함), J=배당 수익,
     // K=총 수익(매매+배당), L=매입 금액, M=평가 금액, N=예수금, O=총 자산.
@@ -567,7 +582,7 @@ function findFirstTickerRow(rows, colIdx, fromRow) {
   return -1;
 }
 
-function parseTradeLogSheet(rows) {
+function parseTradeLogSheet(rows, dailyChangeCol) {
   const fxRate = num(cell(rows, 0, 1));
 
   // trades: date (A) + ticker (B) + qty (C) + avg price (D) + amount (E)
@@ -607,6 +622,10 @@ function parseTradeLogSheet(rows) {
         qty: num(cell(rows, r, 9)),
         return_pct: num(cell(rows, r, 10)),
         buy_amount: num(cell(rows, r, 11)),
+        // '전일대비' -- a manually-added GOOGLEFINANCE("...","changepct")
+        // column (see ACCOUNTS[key].holdingsDailyChangeCol). null (shown as
+        // '-') until that column is added to the sheet.
+        daily_change_pct: dailyChangeCol != null ? num(cell(rows, r, dailyChangeCol)) : null,
       });
     }
   }
@@ -850,9 +869,12 @@ function parseMonthDetailSheet(rows, knownTickerCol) {
   return { tickers, dailyEquity, dateDebug };
 }
 
-// Parses the '종목별 일별 기록' tab: header row (날짜, 종목명, 평가손익, 수익률)
-// followed by one row per ticker per recorded day. Returns a map keyed by
-// date -> [{ticker, pnl, return_pct}, ...].
+// Parses the '종목별 일별 기록' tab: header row (날짜, 종목명, 평가손익,
+// 수익률, 전일대비) followed by one row per ticker per recorded day (one
+// row per manual "오늘 기록 저장" click, not per calendar day -- see setup
+// guide). Returns a map keyed by date -> [{ticker, pnl, return_pct,
+// daily_change_pct}, ...]. The 4th column is optional (older recordings /
+// an older script version won't have it) -- missing simply reads as null.
 function parseTickerHistorySheet(rows) {
   const map = {};
   for (let r = 1; r < rows.length; r++) {
@@ -861,8 +883,9 @@ function parseTickerHistorySheet(rows) {
     if (!date || !ticker) continue;
     const pnl = num(cell(rows, r, 2));
     const returnPct = num(cell(rows, r, 3));
+    const dailyChangePct = num(cell(rows, r, 4));
     if (!map[date]) map[date] = [];
-    map[date].push({ ticker, pnl, return_pct: returnPct });
+    map[date].push({ ticker, pnl, return_pct: returnPct, daily_change_pct: dailyChangePct });
   }
   return map;
 }
@@ -881,7 +904,7 @@ async function buildDashboardData(accountKey) {
     [cfg.tradeLogSheet, cfg.cashflowSheet, cfg.summarySheet]
   );
 
-  const { fxRate, trades, holdings, realized } = parseTradeLogSheet(tradeRows);
+  const { fxRate, trades, holdings, realized } = parseTradeLogSheet(tradeRows, cfg.holdingsDailyChangeCol);
   const cashflow = parseCashflowSheet(cashflowRows);
   const monthly = parseSummarySheet(summaryRows, cfg.summaryCols);
   const summaryDebug = monthly.__debug || null;
@@ -1139,12 +1162,15 @@ if (typeof module !== 'undefined' && module.exports) {
   });
 
   // ---------- per-day ticker snapshot history ----------
-  // Comes from the '종목별 일별 기록' sheet tab, which an Apps Script bound to
-  // the spreadsheet appends to once per day (see setup guide). Stored in the
-  // sheet itself rather than browser storage, so it follows the Google
+  // Comes from the '종목별 일별 기록' sheet tab, which an Apps Script bound
+  // to the spreadsheet appends to when the "오늘 기록 저장" sheet menu item
+  // is clicked (see setup guide) -- a deliberate, user-timed action rather
+  // than automatic on-open, so a half-finished day's edits don't get
+  // recorded as that day's snapshot just from opening the sheet. Stored in
+  // the sheet itself rather than browser storage, so it follows the Google
   // account -- same on any computer/phone, survives clearing browser data.
-  // If that tab doesn't exist yet (script not installed), this is just {}
-  // and the tooltip below shows "기록 없음" for every date.
+  // If that tab doesn't exist yet (script not installed / never saved), this
+  // is just {} and the tooltip below shows "기록 없음" for every date.
   const tickerHistoryMap = DATA.ticker_history || {};
 
   // ---------- Section 3: charts ----------
@@ -1220,9 +1246,9 @@ if (typeof module !== 'undefined' && module.exports) {
   // P&L/return alongside the account return, colored red(상승)/blue(하락).
   // Shows the currently-selected month (see trend-chart tabs). Per-ticker
   // figures come from tickerHistoryMap (the sheet's '종목별 일별 기록' tab)
-  // for that exact date -- so the numbers genuinely differ day to day as
-  // the Apps Script records new days, instead of always reflecting today's
-  // holdings.
+  // for that exact date -- so the numbers genuinely differ day to day, one
+  // frozen snapshot per "오늘 기록 저장" click, instead of always reflecting
+  // today's live holdings.
   function buildReturnChart() {
     const canvas = document.getElementById('returnChart');
     const ctx = canvas.getContext('2d');
@@ -1247,13 +1273,15 @@ if (typeof module !== 'undefined' && module.exports) {
       html += `<div class="ctt-row"><span>계좌 수익률</span><span style="color:${upDownColor(retVal)}; font-weight:700;">${retVal == null ? '-' : Math.abs(retVal).toFixed(2) + '%'}</span></div>`;
       const dayHoldings = tickerHistoryMap[date];
       if (dayHoldings && dayHoldings.length) {
-        html += `<div class="ctt-sep"></div><div class="ctt-sub">보유 종목 평가손익 · 수익률</div>`;
+        html += `<div class="ctt-sep"></div><div class="ctt-sub">보유 종목 평가손익 · 수익률 · 전일대비</div>`;
         dayHoldings.forEach(h => {
           const c = upDownColor(h.pnl);
-          html += `<div class="ctt-row"><span style="color:${c};">${h.ticker}</span><span style="color:${c};">${fmtUSD0Abs(h.pnl)} (${h.return_pct == null ? '-' : Math.abs(h.return_pct*100).toFixed(2) + '%'})</span></div>`;
+          const dc = upDownColor(h.daily_change_pct);
+          const dailyText = h.daily_change_pct == null ? '-' : Math.abs(h.daily_change_pct * 100).toFixed(2) + '%';
+          html += `<div class="ctt-row"><span style="color:var(--text-primary); white-space:nowrap;">${h.ticker}</span><span style="color:${c}; white-space:nowrap;">${fmtUSD0Abs(h.pnl)} (${h.return_pct == null ? '-' : Math.abs(h.return_pct*100).toFixed(2) + '%'})</span><span style="color:${dc}; white-space:nowrap; font-size:11px;">${dailyText}</span></div>`;
         });
       } else {
-        html += `<div class="ctt-sep"></div><div class="ctt-sub" style="font-style:italic;">이 날짜의 종목별 기록이 없습니다 (시트에 기록용 스크립트를 설정한 이후부터 매일 자동 기록됩니다)</div>`;
+        html += `<div class="ctt-sep"></div><div class="ctt-sub" style="font-style:italic;">이 날짜의 종목별 기록이 없습니다 (시트에서 '오늘 기록 저장' 메뉴를 누른 날짜만 기록됩니다)</div>`;
       }
       tooltipEl.innerHTML = html;
       tooltipEl.style.opacity = 1;
