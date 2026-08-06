@@ -245,20 +245,6 @@
       <p class="block-title" id="annualTitle" style="font-size:14px; margin-top:2px;">연간 종합 실적</p>
       <div class="stat-row-6" id="annualStatRow" style="margin-bottom:18px;"></div>
 
-      <div class="card">
-        <div style="overflow-x:auto;">
-          <table class="data-table" id="monthlyTable">
-            <thead>
-              <tr>
-                <th>월</th><th>입금(KRW)</th><th>출금(KRW)</th><th>환전(KRW→USD)</th>
-                <th>매매손익(USD)</th><th>원화반영손익(KRW)</th><th>배당수익(USD)</th><th>총수익(USD)</th>
-              </tr>
-            </thead>
-            <tbody id="monthlyBody"></tbody>
-          </table>
-        </div>
-      </div>
-
       <div class="card" style="margin-top:18px;">
         <h3 style="margin:0 0 12px; font-size:14px;">월별 상세 내역</h3>
         <div class="month-tabs" id="monthTabs"></div>
@@ -1340,7 +1326,14 @@ if (typeof module !== 'undefined' && module.exports) {
     return entries.length ? entries.reduce((acc, d) => acc + d.krw_pl, 0) : null;
   };
 
-  const monthlyBody = document.getElementById('monthlyBody');
+  // Per-month figures used to live in a wide table (one row per month, 8
+  // columns) -- on a phone that table just got cut off on the right with no
+  // visible scroll affordance (reported by the user from the deployed
+  // GitHub Pages page on their phone). Replaced with the annual stat-tile
+  // row above plus the month-tabs + card view below (id=monthTabs /
+  // monthStatRow), which already existed for the cash/trade/realized detail
+  // tables and reads cleanly on mobile -- one month's numbers at a time as
+  // a card grid instead of a horizontally-scrolling table.
   const sumField = (f) => monthly.reduce((acc, m) => acc + (m[f] || 0), 0);
   const annual = {
     deposit_krw: sumField('deposit_krw'),
@@ -1351,27 +1344,6 @@ if (typeof module !== 'undefined' && module.exports) {
     dividend: sumField('dividend'),
     total_profit: sumField('total_profit'),
   };
-  monthlyBody.innerHTML = monthly.map(m => `
-    <tr>
-      <td>${m.month}</td>
-      <td>${fmtKRW(m.deposit_krw)}</td>
-      <td>${fmtKRW(m.withdraw_krw)}</td>
-      <td>${fmtKRW(m.exchange_krw)}</td>
-      <td class="${cls(m.trade_profit)}">${fmtUSDAbs(m.trade_profit)}</td>
-      <td class="${cls(krwRealizedForMonth(m.month))}">${fmtKRWAbs(krwRealizedForMonth(m.month))}</td>
-      <td class="${cls(m.dividend)}">${fmtUSDAbs(m.dividend)}</td>
-      <td class="${cls(m.total_profit)}">${fmtUSDAbs(m.total_profit)}</td>
-    </tr>`).join('') + (monthly.length ? `
-    <tr class="total-row">
-      <td>합계</td>
-      <td>${fmtKRW(annual.deposit_krw)}</td>
-      <td>${fmtKRW(annual.withdraw_krw)}</td>
-      <td>${fmtKRW(annual.exchange_krw)}</td>
-      <td class="${cls(annual.trade_profit)}">${fmtUSDAbs(annual.trade_profit)}</td>
-      <td class="${cls(annual.krw_realized_pl)}">${fmtKRWAbs(annual.krw_realized_pl)}</td>
-      <td class="${cls(annual.dividend)}">${fmtUSDAbs(annual.dividend)}</td>
-      <td class="${cls(annual.total_profit)}">${fmtUSDAbs(annual.total_profit)}</td>
-    </tr>` : '');
 
   const section1Sub = document.getElementById('section1Sub');
   section1Sub.textContent = `'${DATA.sheet_year || ''} ${DATA.account || ''}' 시트의 월별 집계와 원본 거래 로그를 함께 보여줍니다.`.replace(/^'\s+/, "'");
