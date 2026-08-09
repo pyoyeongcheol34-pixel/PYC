@@ -48,7 +48,10 @@
     --series-2:       #eb6834; /* orange */
     --series-3:       #1baf7a; /* aqua */
     --series-4:       #eda100; /* yellow */
-    --series-5:       #4a3aa7; /* violet */
+    --series-5:       #e87ba4; /* magenta */
+    --series-6:       #008300; /* green */
+    --series-7:       #4a3aa7; /* violet */
+    --series-8:       #e34948; /* red */
     --good:           #c92a2a; /* red = 상승/이익 (국내 증시 관행) */
     --good-fill:      #c92a2a;
     --critical:       #2f6fb0; /* 파랑 = 하락/손실 */
@@ -71,7 +74,10 @@
     --series-2:       #d95926;
     --series-3:       #199e70;
     --series-4:       #c98500;
-    --series-5:       #9085e9;
+    --series-5:       #d55181;
+    --series-6:       #008300;
+    --series-7:       #9085e9;
+    --series-8:       #e66767;
     --good:           #e8615f; /* 빨강 = 상승/이익 */
     --good-fill:      #e8615f;
     --critical:       #5b9bdb; /* 파랑 = 하락/손실 */
@@ -121,8 +127,20 @@
   .chart-card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; position: relative; }
   .chart-card h3 { font-size: 13px; font-weight: 600; margin: 0 0 10px; color: var(--text-primary); }
   .chart-card canvas { width: 100% !important; }
+  /* Donut previously filled the whole card width (Chart.js's default
+     aspectRatio:1 for doughnut made it as tall as the card was wide, which
+     read as oversized on a large screen) -- capped and centered instead. */
+  .chart-card canvas.donut-canvas { max-width: 240px !important; margin: 0 auto; display: block; }
   .legend-row { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; font-size: 12px; color: var(--text-secondary); }
   .legend-row span.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
+
+  .weight-legend { display: flex; flex-direction: column; gap: 4px; }
+  .weight-legend-row { display: flex; align-items: center; gap: 8px; padding: 7px 2px; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .weight-legend-row:last-child { border-bottom: none; }
+  .weight-legend-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+  .weight-legend-name { color: var(--text-primary); font-weight: 600; flex: none; min-width: 48px; }
+  .weight-legend-amt { color: var(--text-muted); font-size: 11px; margin-left: auto; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .weight-legend-pct { color: var(--text-secondary); font-weight: 600; font-variant-numeric: tabular-nums; min-width: 46px; text-align: right; white-space: nowrap; }
 
   .custom-tooltip {
     position: absolute; pointer-events: none; opacity: 0; z-index: 20;
@@ -202,6 +220,17 @@
       <p class="block-title">내 계좌 한눈에 보기</p>
       <p class="block-sub">가장 최근 기록된 일별 스냅샷과 보유 종목 현황입니다.</p>
       <div class="stat-row" id="statRow"></div>
+      <div class="chart-grid" style="margin-top:14px;">
+        <div class="chart-card">
+          <h3>계좌 구성 비중 (종목 + 예수금)</h3>
+          <canvas id="weightChart" class="donut-canvas"></canvas>
+          <p class="empty-note" id="weightChartEmpty" style="display:none; text-align:center; padding:24px 0 0;">보유 종목이 없습니다.</p>
+        </div>
+        <div class="chart-card">
+          <h3>비중 상세</h3>
+          <div id="weightLegend" class="weight-legend"></div>
+        </div>
+      </div>
       <div class="card" style="margin-top:14px;">
         <div style="overflow-x:auto;">
           <table class="data-table" id="holdingsTable">
@@ -1028,7 +1057,7 @@ if (typeof module !== 'undefined' && module.exports) {
   const root = document.documentElement;
   const btn = document.getElementById('themeToggle');
   let rebuildChartsRef = () => {};
-  let assetChart, returnChart;
+  let assetChart, returnChart, weightChart;
   // Always opens in light mode by default -- dark mode is only ever active
   // after the user explicitly clicks this button (not tied to the OS/browser
   // system color-scheme preference), and resets to light on next load.
@@ -1146,6 +1175,57 @@ if (typeof module !== 'undefined' && module.exports) {
     sumEval += evalAmt || 0;
     return { ...h, evalAmt, pnl };
   });
+
+  // ---------- Section top: holdings weight (donut) ----------
+  // Composition of the WHOLE account -- not just the invested portion, so
+  // 예수금 (uninvested cash) is included as its own slice alongside the
+  // tickers. Without it, a account sitting mostly in cash (which does
+  // happen here -- 예수금 has been larger than 평가금액 at times) would
+  // read as "fully invested" when it isn't. Weight is still off evalAmt
+  // (current market value) for the invested tickers, not buy_amount --
+  // cost basis answers a different question ("where did I put money in")
+  // than this chart's job ("what does my account look like right now").
+  // Colors: the design system's validated 8-slot categorical order (see
+  // dataviz skill / references/palette.md), assigned in fixed rank order by
+  // position size -- never re-picked when the holding list changes. Capped
+  // at 8 named ticker slices (folding any excess into "기타") as a backstop
+  // against unreadable color-class counts (dataviz skill: "past ~7 bins,
+  // adjacent classes blur"); the user's actual holdings count is well under
+  // that, so in practice every ticker gets its own name and color, with no
+  // grey "기타" bucket. Cash keeps its own dedicated neutral (muted) color,
+  // separate from the ticker rainbow, since it isn't a position -- and can
+  // legitimately be the largest slice.
+  const WEIGHT_COLOR_VARS = ['--series-1', '--series-2', '--series-3', '--series-4', '--series-5', '--series-6', '--series-7', '--series-8'];
+  const WEIGHT_MAX_SLICES = 8;
+  function buildWeightData() {
+    const tickersSorted = rows.filter(h => h.evalAmt != null && h.evalAmt > 0)
+      .sort((a, b) => b.evalAmt - a.evalAmt);
+    const cash = snap.cash != null && snap.cash > 0 ? snap.cash : 0;
+    const total = tickersSorted.reduce((acc, h) => acc + h.evalAmt, 0) + cash;
+    if (!total) return [];
+
+    // Color is assigned by rank AMONG TICKERS ONLY, in fixed order -- a
+    // ticker's color never shifts just because cash is large enough to
+    // outrank it in the final display order below. Cash and any folded
+    // "기타" remainder always render in their own dedicated neutrals, never
+    // a rainbow hue, since neither is an actual position.
+    const head = tickersSorted.slice(0, WEIGHT_MAX_SLICES);
+    const restSum = tickersSorted.slice(WEIGHT_MAX_SLICES).reduce((acc, h) => acc + h.evalAmt, 0);
+    const items = head.map((h, i) => ({ label: h.ticker, value: h.evalAmt, color: cssVar(WEIGHT_COLOR_VARS[i]) }));
+    if (restSum > 0) items.push({ label: '기타', value: restSum, color: cssVar('--text-muted') });
+    if (cash > 0) {
+      // A distinct neutral from "기타"'s --text-muted, so the two never
+      // render as the same gray in the rare case both appear at once.
+      items.push({ label: '예수금', value: cash, color: cssVar('--text-secondary') });
+    }
+
+    // Display order (donut arc order + legend order) is by magnitude across
+    // EVERYTHING including cash -- cash isn't pinned to the end just
+    // because it isn't a "position"; if it's the account's single largest
+    // component (has happened here) it should read that way.
+    items.sort((a, b) => b.value - a.value);
+    return items.map(it => ({ ...it, pct: it.value / total }));
+  }
 
   // ---------- per-day ticker snapshot history ----------
   // Comes from the '종목별 일별 기록' sheet tab, which an Apps Script bound
@@ -1289,6 +1369,61 @@ if (typeof module !== 'undefined' && module.exports) {
           tooltip: { enabled: false, external: externalTooltip },
         }),
       }),
+    });
+  }
+
+  // Donut is the visual "at a glance" read; the legend list beside it and
+  // the holdings table below both carry the exact numbers as text, so
+  // identity/weight is never color-alone (the light-mode categorical
+  // palette validated with a contrast WARN against this surface, which
+  // requires visible non-color labels -- this satisfies that).
+  function buildWeightChart() {
+    const canvas = document.getElementById('weightChart');
+    const emptyNote = document.getElementById('weightChartEmpty');
+    const legendEl = document.getElementById('weightLegend');
+    const slices = buildWeightData();
+    const hasData = slices.length > 0;
+    canvas.style.display = hasData ? '' : 'none';
+    emptyNote.style.display = hasData ? 'none' : 'block';
+    if (!hasData) { legendEl.innerHTML = ''; return; }
+
+    legendEl.innerHTML = slices.map(s => `
+      <div class="weight-legend-row">
+        <span class="weight-legend-dot" style="background:${s.color};"></span>
+        <span class="weight-legend-name">${s.label}</span>
+        <span class="weight-legend-amt">${fmtUSD0(s.value)}</span>
+        <span class="weight-legend-pct">${(s.pct * 100).toFixed(1)}%</span>
+      </div>`).join('');
+
+    const ctx = canvas.getContext('2d');
+    weightChart = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: slices.map(s => s.label),
+        datasets: [{
+          data: slices.map(s => s.value),
+          backgroundColor: slices.map(s => s.color),
+          borderColor: surface(),
+          borderWidth: 2,
+        }],
+      },
+      options: {
+        responsive: true,
+        cutout: '62%',
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: surface(), titleColor: cssVar('--text-primary'), bodyColor: cssVar('--text-secondary'),
+            borderColor: cssVar('--border'), borderWidth: 1, padding: 10, boxPadding: 4,
+            callbacks: {
+              label: (ctx) => {
+                const s = slices[ctx.dataIndex];
+                return ` ${s.label}  ${fmtUSD0(s.value)}  (${(s.pct * 100).toFixed(1)}%)`;
+              },
+            },
+          },
+        },
+      },
     });
   }
 
@@ -1442,6 +1577,15 @@ if (typeof module !== 'undefined' && module.exports) {
     assetChart = null;
     returnChart = null;
   }
+  // weightChart is intentionally NOT tied to destroyCharts()/renderTrendMonth
+  // -- it doesn't depend on which month's trend tab is selected, so a month
+  // click must not touch it. It only needs to be rebuilt on theme toggle
+  // (colors come from CSS vars) and on a fresh renderDashboard() call
+  // (new/refreshed holdings data).
+  function rebuildWeightChart() {
+    if (weightChart) { weightChart.destroy(); weightChart = null; }
+    buildWeightChart();
+  }
   const trendMonthTabs = document.getElementById('trendMonthTabs');
   trendMonthTabs.innerHTML = monthKeys.map(m => `<button class="month-tab" data-month="${m}">${m}</button>`).join('');
   function renderTrendMonth(month) {
@@ -1471,11 +1615,13 @@ if (typeof module !== 'undefined' && module.exports) {
   });
   function rebuildCharts() {
     renderTrendMonth(trendMonth);
+    rebuildWeightChart();
   }
   rebuildChartsRef = rebuildCharts;
 
   renderTrendMonth(trendMonth);
   if (monthKeys.length) renderMonthDetail(activeMonth);
+  rebuildWeightChart();
 
   // ---------- diagnostic panel ("데이터 진단 정보 보기") ----------
   // Shows exactly what each month sheet's daily-record header row (날짜/매입
