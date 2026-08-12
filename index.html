@@ -276,6 +276,7 @@
 
       <div class="card" style="margin-top:18px;">
         <h3 style="margin:0 0 12px; font-size:14px;">월별 상세 내역</h3>
+        <div class="month-tabs" id="yearTabs" style="display:none;"></div>
         <div class="month-tabs" id="monthTabs"></div>
         <div class="month-stat-row" id="monthStatRow"></div>
         <div class="detail-grid">
@@ -363,6 +364,19 @@ const ACCOUNTS = {
     // summaryCols above -- searching for it via header text turned out not
     // to be reliable against what Google's gviz endpoint actually returns.
     monthTickerCol: 0,
+    // Past years (before this dashboard's live-tracking year) that only get
+    // an annual per-ticker realized P&L / dividend summary -- no monthly
+    // cashflow, trade log, or daily equity for these, since the user is
+    // backfilling old records from before this sheet existed. Each year gets
+    // its own tab named by pastYearSheet(year), containing ONLY the same
+    // 5-column ticker block a month tab has (종목/실현손익/원화반영손익/
+    // 실현수익률/배당수익, starting at column A) -- reuses
+    // parseMonthDetailSheet unchanged. A year listed here with no tab yet
+    // (not created in the sheet) just shows "데이터 없음" in the dashboard
+    // instead of erroring. '양' has no past-years tabs (leave unset) --
+    // the year-tab UI only appears for an account with a non-empty list here.
+    pastYears: [2025, 2024, 2023, 2022, 2021],
+    pastYearSheet: (year) => `${year} 실현손익`,
   },
   양: {
     label: '양',
@@ -933,6 +947,21 @@ async function buildDashboardData(accountKey) {
   const historyRows = await fetchSheetRowsOptional(cfg.historySheet);
   const tickerHistory = historyRows ? parseTickerHistorySheet(historyRows) : {};
 
+  // Past years' annual realized-P&L-only tabs (see ACCOUNTS[key].pastYears
+  // comment). Missing tab -> simply absent from yearRealized, shown as
+  // "데이터 없음" in the dashboard rather than an error.
+  const yearRealized = {};
+  if (cfg.pastYears && cfg.pastYears.length) {
+    const yearSheetNames = cfg.pastYears.map(y => cfg.pastYearSheet(y));
+    const yearRows = await fetchAllSequential(yearSheetNames, true);
+    cfg.pastYears.forEach((y, idx) => {
+      const rows = yearRows[idx];
+      if (!rows) return;
+      const { tickers } = parseMonthDetailSheet(rows, 0);
+      if (tickers.length) yearRealized[y] = tickers;
+    });
+  }
+
   let dailyEquity = [];
   const monthlyTickerPl = {};
   // per-month diagnostic trail, surfaced in the dashboard's "데이터 진단"
@@ -1015,6 +1044,8 @@ async function buildDashboardData(accountKey) {
     monthly_ticker_pl: monthlyTickerPl,
     current_snapshot: currentSnapshot,
     ticker_history: tickerHistory,
+    past_years: cfg.pastYears || [],
+    year_realized: yearRealized,
     month_debug: monthDebug,
     summary_debug: summaryDebug,
     today_str: todayStr,
@@ -1571,6 +1602,93 @@ if (typeof module !== 'undefined' && module.exports) {
     if (btn) renderMonthDetail(btn.dataset.month);
   });
 
+  // ---------- Section 1: year tabs (past years, realized P&L only) ----------
+  // Some accounts (currently only '표') are backfilling years from before
+  // this sheet existed -- those years only ever get an annual per-ticker
+  // realized P&L / dividend list (see ACCOUNTS[key].pastYears in
+  // extract.js), not monthly cashflow/trade-log/daily-equity data. Picking
+  // one of those years only swaps the "종목별 실현손익 · 배당" table below;
+  // every other card on the page (trend chart, 입출금·환전 내역, 매매 내역,
+  // month-stat row) is left showing its normal empty state, since there's
+  // genuinely no such data for those years -- NOT recomputed from the
+  // realized list, so it doesn't look like a real (but wrong) figure.
+  const liveYear = DATA.sheet_year;
+  const pastYears = DATA.past_years || [];
+  const yearRealized = DATA.year_realized || {};
+  const allYears = pastYears.length ? [liveYear, ...pastYears] : [];
+  const yearTabsEl = document.getElementById('yearTabs');
+
+  const emptyMonthStat = (label) => `<div class="month-stat"><div class="l">${label}</div><div class="v">-</div></div>`;
+
+  // Sums a field across a past year's realized-P&L list, matching the same
+  // "null unless at least one real entry exists" convention as the live
+  // year's krwRealizedForMonth() above -- a year with zero realized trades
+  // should show '-', not a colored $0.
+  function sumRealizedField(list, field) {
+    const entries = list.filter(d => d[field] != null);
+    return entries.length ? entries.reduce((acc, d) => acc + d[field], 0) : null;
+  }
+
+  function renderPastYearDetail(year) {
+    const list = yearRealized[year] || [];
+    // 입금/출금/환전 genuinely have no data for these backfilled years (only
+    // the per-ticker realized/dividend list is entered -- see 설정_가이드.md
+    // section 3), so those three stay '-'. 매매손익/원화반영손익/배당수익/
+    // 총수익, however, ARE fully derivable from that same realized list (it
+    // has realized_pl/krw_pl/dividend per ticker), so compute and show them
+    // here instead of leaving them blank too.
+    const tradeProfit = sumRealizedField(list, 'realized_pl');
+    const krwRealized = sumRealizedField(list, 'krw_pl');
+    const dividend = sumRealizedField(list, 'dividend');
+    const totalProfit = (tradeProfit != null || dividend != null) ? (tradeProfit || 0) + (dividend || 0) : null;
+
+    document.getElementById('monthStatRow').innerHTML =
+      ['입금', '출금', '환전'].map(emptyMonthStat).join('') + `
+      <div class="month-stat"><div class="l">매매손익</div><div class="v ${cls(tradeProfit)}">${fmtUSDAbs(tradeProfit)}</div></div>
+      <div class="month-stat"><div class="l">원화반영손익</div><div class="v ${cls(krwRealized)}">${fmtKRWAbs(krwRealized)}</div></div>
+      <div class="month-stat"><div class="l">배당수익</div><div class="v ${cls(dividend)}">${fmtUSDAbs(dividend)}</div></div>
+      <div class="month-stat"><div class="l">총수익</div><div class="v ${cls(totalProfit)}">${fmtUSDAbs(totalProfit)}</div></div>
+    `;
+    document.querySelector('#cashDetailTable tbody').innerHTML =
+      `<tr><td colspan="3" class="empty-note">${year}년은 종목별 실현손익만 기록됩니다</td></tr>`;
+    document.querySelector('#tradeDetailTable tbody').innerHTML =
+      `<tr><td colspan="5" class="empty-note">${year}년은 종목별 실현손익만 기록됩니다</td></tr>`;
+
+    const realizedTbody = document.querySelector('#realizedDetailTable tbody');
+    realizedTbody.innerHTML = list.length ? list.map(d => `
+      <tr>
+        <td>${d.ticker}</td>
+        <td class="${cls(d.realized_pl)}">${fmtUSDAbs(d.realized_pl)}</td>
+        <td class="${cls(d.krw_pl)}">${fmtKRWAbs(d.krw_pl)}</td>
+        <td class="${cls(d.realized_return_pct)}">${fmtPctAbs(d.realized_return_pct)}</td>
+        <td class="delta-good">${d.dividend ? fmtUSDAbs(d.dividend) : '-'}</td>
+      </tr>`).join('')
+      : `<tr><td colspan="5" class="empty-note">${year}년 데이터가 아직 입력되지 않았습니다</td></tr>`;
+  }
+
+  function selectYear(year) {
+    [...yearTabsEl.children].forEach(b => b.classList.toggle('active', Number(b.dataset.year) === year));
+    const isLiveYear = year === liveYear;
+    monthTabs.style.display = isLiveYear ? '' : 'none';
+    document.getElementById('monthStatRow').style.display = '';
+    if (isLiveYear) {
+      if (monthKeys.length) renderMonthDetail(activeMonth);
+    } else {
+      renderPastYearDetail(year);
+    }
+  }
+
+  if (allYears.length > 1) {
+    yearTabsEl.style.display = '';
+    yearTabsEl.innerHTML = allYears.map(y => `<button class="month-tab" data-year="${y}">${y}${y === liveYear ? ' (현재)' : ''}</button>`).join('');
+    yearTabsEl.addEventListener('click', (e) => {
+      const btn = e.target.closest('.month-tab');
+      if (btn) selectYear(Number(btn.dataset.year));
+    });
+  } else {
+    yearTabsEl.style.display = 'none';
+  }
+
   // ---------- init / rebuild on theme toggle & trend-chart month tabs ----------
   function destroyCharts() {
     [assetChart, returnChart].forEach(c => c && c.destroy());
@@ -1620,7 +1738,7 @@ if (typeof module !== 'undefined' && module.exports) {
   rebuildChartsRef = rebuildCharts;
 
   renderTrendMonth(trendMonth);
-  if (monthKeys.length) renderMonthDetail(activeMonth);
+  selectYear(liveYear);
   rebuildWeightChart();
 
   // ---------- diagnostic panel ("데이터 진단 정보 보기") ----------
