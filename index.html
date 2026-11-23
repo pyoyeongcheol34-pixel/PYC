@@ -652,7 +652,11 @@ function parseTradeLogSheet(rows, dailyChangeCol) {
         avg_buy_price: num(cell(rows, r, 8)),
         qty: num(cell(rows, r, 9)),
         return_pct: num(cell(rows, r, 10)),
-        buy_amount: num(cell(rows, r, 11)),
+        // 매입금액 = 평균 매입가(I) × 보유 수량(J). '양' 시트는 L열을 평가금액으로 쓰고 있어서
+        // L열을 매입금액으로 읽으면 평가손익이 전부 0이 된다. I·J가 비어 있을 때만 L열을 쓴다.
+        buy_amount: (num(cell(rows, r, 8)) != null && num(cell(rows, r, 9)) != null)
+          ? num(cell(rows, r, 8)) * num(cell(rows, r, 9))
+          : num(cell(rows, r, 11)),
         // '전일대비' -- a manually-added GOOGLEFINANCE("...","changepct")
         // column (see ACCOUNTS[key].holdingsDailyChangeCol). null (shown as
         // '-') until that column is added to the sheet.
