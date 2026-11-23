@@ -1866,6 +1866,8 @@ if (typeof module !== 'undefined' && module.exports) {
     if (document.visibilityState === 'visible' && DATA) loadAndRender();
   });
 })();
+// Home-screen app support; skipped on file:// where service workers can't run.
+if ('serviceWorker' in navigator && window.isSecureContext) navigator.serviceWorker.register('sw.js');
 </script>
 </body>
 </html>
