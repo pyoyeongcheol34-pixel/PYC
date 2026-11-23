@@ -431,10 +431,20 @@ function ensureGvizNamespace() {
 // restoring the previous value afterwards. Because the hook is a single
 // shared global, calls must run one at a time (see fetchAllSequential)
 // rather than in parallel.
+// Parallel-safe version: each request carries tqx=reqId:N, gviz echoes it
+// back as resp.reqId, and one shared setResponse dispatches by that id -- so
+// all tabs can load at once instead of one round-trip after another.
+const GVIZ_PENDING = {};
+let GVIZ_NEXT_ID = 0;
 function fetchSheetRows(sheetName, timeoutMs) {
   timeoutMs = timeoutMs || 20000;
   return new Promise((resolve, reject) => {
     ensureGvizNamespace();
+    window.google.visualization.Query.setResponse = (resp) => {
+      const h = resp && GVIZ_PENDING[resp.reqId];
+      if (h) h(resp);
+    };
+    const reqId = GVIZ_NEXT_ID++;
     // headers=0 tells gviz to treat every row as plain data and never
     // auto-detect/strip a "header row" out of table.rows into table.cols[]
     // .label instead. Without this, gviz guesses the header-row count per
@@ -444,15 +454,14 @@ function fetchSheetRows(sheetName, timeoutMs) {
     // locating columns like 배당 수익/총 수익 by name) actually lands on,
     // even though every local test (built from hand-constructed table.rows)
     // never reproduces this since those never go through gviz's guesser.
-    const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}&headers=0`;
+    const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=${encodeURIComponent(`reqId:${reqId};out:json`)}&sheet=${encodeURIComponent(sheetName)}&headers=0`;
     let done = false;
     const script = document.createElement('script');
-    const prevHandler = window.google.visualization.Query.setResponse;
     const timer = setTimeout(() => finish(() => reject(new Error(`시간 초과: ${sheetName}`))), timeoutMs);
 
     function cleanup() {
       clearTimeout(timer);
-      window.google.visualization.Query.setResponse = prevHandler;
+      delete GVIZ_PENDING[reqId];
       if (script.parentNode) script.parentNode.removeChild(script);
     }
     function finish(action) {
@@ -462,7 +471,7 @@ function fetchSheetRows(sheetName, timeoutMs) {
       action();
     }
 
-    window.google.visualization.Query.setResponse = (resp) => {
+    GVIZ_PENDING[reqId] = (resp) => {
       finish(() => {
         if (!resp || resp.status === 'error') {
           const msg = (resp && resp.errors && resp.errors[0] && resp.errors[0].detailed_message) || '조회 오류';
@@ -480,16 +489,9 @@ function fetchSheetRows(sheetName, timeoutMs) {
 
 // Runs a list of (sheetName -> promise-returning) loaders strictly one at a
 // time. Required because fetchSheetRows shares one global callback hook.
-async function fetchAllSequential(sheetNames, optional) {
-  const out = [];
-  for (const name of sheetNames) {
-    if (optional) {
-      out.push(await fetchSheetRowsOptional(name));
-    } else {
-      out.push(await fetchSheetRows(name));
-    }
-  }
-  return out;
+// (Name kept for callers; now parallel thanks to reqId routing above.)
+function fetchAllSequential(sheetNames, optional) {
+  return Promise.all(sheetNames.map(name => optional ? fetchSheetRowsOptional(name) : fetchSheetRows(name)));
 }
 
 function gvizTableToRows(table) {
@@ -929,9 +931,16 @@ async function buildDashboardData(accountKey) {
   // NOTE: these must run strictly one at a time (not Promise.all) because
   // fetchSheetRows hooks a single shared global callback
   // (google.visualization.Query.setResponse) per in-flight request.
-  const [tradeRows, cashflowRows, summaryRows] = await fetchAllSequential(
-    [cfg.tradeLogSheet, cfg.cashflowSheet, cfg.summarySheet]
-  );
+  const monthLabels = Array.from({ length: 12 }, (_, i) => `${i + 1}월`);
+  const monthSheetNames = monthLabels.map(m => m + cfg.monthSheetSuffix);
+  const yearSheetNames = (cfg.pastYears || []).map(y => cfg.pastYearSheet(y));
+  // all tabs requested at once (see fetchSheetRows reqId routing)
+  const [[tradeRows, cashflowRows, summaryRows], monthResults, historyRows, yearRows] = await Promise.all([
+    fetchAllSequential([cfg.tradeLogSheet, cfg.cashflowSheet, cfg.summarySheet]),
+    fetchAllSequential(monthSheetNames, true),
+    fetchSheetRowsOptional(cfg.historySheet),
+    fetchAllSequential(yearSheetNames, true),
+  ]);
 
   const { fxRate, trades, holdings, realized } = parseTradeLogSheet(tradeRows, cfg.holdingsDailyChangeCol);
   const cashflow = parseCashflowSheet(cashflowRows);
@@ -941,10 +950,6 @@ async function buildDashboardData(accountKey) {
   // monthLabels are the LOGICAL keys used everywhere else in the app (must
   // match parseSummarySheet's plain 'N월' labels); monthSheetNames are the
   // ACTUAL tab names to fetch, which may carry a per-account suffix.
-  const monthLabels = Array.from({ length: 12 }, (_, i) => `${i + 1}월`);
-  const monthSheetNames = monthLabels.map(m => m + cfg.monthSheetSuffix);
-  const monthResults = await fetchAllSequential(monthSheetNames, true);
-  const historyRows = await fetchSheetRowsOptional(cfg.historySheet);
   const tickerHistory = historyRows ? parseTickerHistorySheet(historyRows) : {};
 
   // Past years' annual realized-P&L-only tabs (see ACCOUNTS[key].pastYears
@@ -952,8 +957,6 @@ async function buildDashboardData(accountKey) {
   // "데이터 없음" in the dashboard rather than an error.
   const yearRealized = {};
   if (cfg.pastYears && cfg.pastYears.length) {
-    const yearSheetNames = cfg.pastYears.map(y => cfg.pastYearSheet(y));
-    const yearRows = await fetchAllSequential(yearSheetNames, true);
     cfg.pastYears.forEach((y, idx) => {
       const rows = yearRows[idx];
       if (!rows) return;
